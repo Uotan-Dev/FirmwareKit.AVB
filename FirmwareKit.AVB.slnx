@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="FirmwareKit.AVB.Tests/FirmwareKit.AVB.Tests.csproj" />
+  <Project Path="FirmwareKit.AVB/FirmwareKit.AVB.csproj" />
+</Solution>
