@@ -74,17 +74,28 @@ public class AvbSlotVerifyData
 /// Provides high-level Android Verified Boot (AVB) slot verification logic.
 /// Equivalent to the 'avb_slot_verify.c' implementation in libavb.
 /// </summary>
-/// <remarks>
-/// Initializes a new instance of the <see cref="AvbSlotVerifier"/> class.
-/// </remarks>
-/// <param name="ops">The <see cref="IAvbOps"/> implementation for platform I/O.</param>
-public class AvbSlotVerifier(IAvbOps ops)
+public class AvbSlotVerifier
 {
-    private readonly IAvbOps _ops = ops;
+    private readonly IAvbOps _ops;
     private const string PersistentDigestPrefix = "avb.persistent_digest.";
     private const string ManagedVerityModeKey = "avb.managed_verity_mode";
     private const int MaxVbmetaImages = 32;
     private const int MaxLoadedPartitions = 32;
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AvbSlotVerifier"/> class.
+    /// </summary>
+    /// <param name="ops">The <see cref="IAvbOps"/> implementation for platform I/O.</param>
+    public AvbSlotVerifier(IAvbOps ops)
+    {
+        _ops = ops;
+    }
+
+    /// <summary>
+    /// Converts slot verification result to a stable libavb-style string.
+    /// Equivalent to 'avb_slot_verify_result_to_string()'.
+    /// </summary>
+    public static string ResultToString(AvbSlotVerifyResult result) => AvbResultStrings.ToLibAvbString(result);
 
     /// <summary>
     /// High-level function that loads and verifies partitions for a specific slot.
@@ -246,7 +257,7 @@ public class AvbSlotVerifier(IAvbOps ops)
             return ioRet;
         }
 
-        if (read == 32 && currentDigest.AsSpan().SequenceEqual(storedDigest))
+        if (read == 32 && AvbUtil.SafeMemCmp(currentDigest, storedDigest) == 0)
         {
             outMode = AvbHashtreeErrorMode.Eio;
         }
@@ -419,7 +430,7 @@ public class AvbSlotVerifier(IAvbOps ops)
         if (expectedPublicKey != null)
         {
             var pubkey = image.AuxiliaryData.Span.Slice((int)image.Header.PublicKeyOffset, (int)image.Header.PublicKeySize);
-            if (!pubkey.SequenceEqual(expectedPublicKey))
+            if (AvbUtil.SafeMemCmp(pubkey, expectedPublicKey) != 0)
             {
                 return AvbSlotVerifyResult.ErrorPublicKeyRejected;
             }
@@ -585,7 +596,9 @@ public class AvbSlotVerifier(IAvbOps ops)
                         false,
                         AvbSlotVerifyResult.Ok,
                         rootDigest,
-                        hashtree.HashAlgorithm.ToLowerInvariant() == "sha512" ? AvbDigestType.Sha512 : AvbDigestType.Sha256));
+                        string.Equals(hashtree.HashAlgorithm, "sha512", StringComparison.OrdinalIgnoreCase)
+                            ? AvbDigestType.Sha512
+                            : AvbDigestType.Sha256));
                 }
             }
         }
@@ -848,7 +861,7 @@ public class AvbSlotVerifier(IAvbOps ops)
         }
 
         var partitionVerifyResult = AvbSlotVerifyResult.Ok;
-        if (!calculatedHash.AsSpan().SequenceEqual(expectedDigest))
+        if (AvbUtil.SafeMemCmp(calculatedHash, expectedDigest) != 0)
         {
             partitionVerifyResult = AvbSlotVerifyResult.ErrorVerification;
             if (!AllowErrorAndContinue(AvbSlotVerifyResult.ErrorVerification, allowVerificationError))
@@ -869,7 +882,9 @@ public class AvbSlotVerifier(IAvbOps ops)
             isPreloaded,
             partitionVerifyResult,
             calculatedHash,
-            hash.HashAlgorithm.ToLowerInvariant() == "sha512" ? AvbDigestType.Sha512 : AvbDigestType.Sha256));
+            string.Equals(hash.HashAlgorithm, "sha512", StringComparison.OrdinalIgnoreCase)
+                ? AvbDigestType.Sha512
+                : AvbDigestType.Sha256));
 
         return partitionVerifyResult;
     }

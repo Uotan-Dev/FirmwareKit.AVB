@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace FirmwareKit.AVB;
 
 /// <summary>
@@ -7,6 +5,27 @@ namespace FirmwareKit.AVB;
 /// </summary>
 public static class AvbUtil
 {
+    /// <summary>
+    /// Constant-time comparison of two byte sequences.
+    /// Returns 0 when equal, 1 when different.
+    /// </summary>
+    public static int SafeMemCmp(ReadOnlySpan<byte> s1, ReadOnlySpan<byte> s2)
+    {
+        var n = s1.Length;
+        if (n != s2.Length)
+        {
+            return 1;
+        }
+
+        var result = 0;
+        for (var i = 0; i < n; i++)
+        {
+            result |= s1[i] ^ s2[i];
+        }
+
+        return result != 0 ? 1 : 0;
+    }
+
     /// <summary>
     /// Adds valueToAdd to value with overflow protection.
     /// </summary>
@@ -40,19 +59,46 @@ public static class AvbUtil
     /// </summary>
     public static bool ValidateUtf8(ReadOnlySpan<byte> data)
     {
-        try
+        var numContinuation = 0;
+        for (var i = 0; i < data.Length; i++)
         {
-#if NET8_0_OR_GREATER
-            return System.Text.Unicode.Utf8.IsValid(data);
-#else
-            _ = Encoding.UTF8.GetString(data.ToArray());
-            return true;
-#endif
+            var c = data[i];
+
+            if (numContinuation > 0)
+            {
+                if ((c & 0xC0) != 0x80)
+                {
+                    return false;
+                }
+
+                numContinuation--;
+                continue;
+            }
+
+            if (c < 0x80)
+            {
+                continue;
+            }
+
+            if ((c & 0xE0) == 0xC0)
+            {
+                numContinuation = 1;
+            }
+            else if ((c & 0xF0) == 0xE0)
+            {
+                numContinuation = 2;
+            }
+            else if ((c & 0xF8) == 0xF0)
+            {
+                numContinuation = 3;
+            }
+            else
+            {
+                return false;
+            }
         }
-        catch
-        {
-            return false;
-        }
+
+        return numContinuation == 0;
     }
 
     /// <summary>

@@ -1,4 +1,4 @@
-namespace LibAVBSharp.Tests;
+namespace FirmwareKit.AVB.Tests;
 
 public class AvbUtilTests
 {
@@ -48,6 +48,23 @@ public class AvbUtilTests
         // Invalid sequence (0xFF, 0xFE, 0xFD)
         ReadOnlySpan<byte> invalid = [0xFF, 0xFE, 0xFD];
         Assert.False(AvbUtil.ValidateUtf8(invalid));
+
+        // Truncated 3-byte sequence
+        ReadOnlySpan<byte> truncated = [0xE4, 0xBD];
+        Assert.False(AvbUtil.ValidateUtf8(truncated));
+    }
+
+    [Fact]
+    public void SafeMemCmp()
+    {
+        ReadOnlySpan<byte> a = [1, 2, 3, 4];
+        ReadOnlySpan<byte> b = [1, 2, 3, 4];
+        ReadOnlySpan<byte> c = [1, 2, 3, 5];
+        ReadOnlySpan<byte> d = [1, 2, 3];
+
+        Assert.Equal(0, AvbUtil.SafeMemCmp(a, b));
+        Assert.Equal(1, AvbUtil.SafeMemCmp(a, c));
+        Assert.Equal(1, AvbUtil.SafeMemCmp(a, d));
     }
 
     [Fact]

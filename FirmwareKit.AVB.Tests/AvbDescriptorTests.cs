@@ -1,7 +1,7 @@
 using System.Buffers.Binary;
 using System.Text;
 
-namespace LibAVBSharp.Tests;
+namespace FirmwareKit.AVB.Tests;
 
 public class AvbDescriptorTests
 {

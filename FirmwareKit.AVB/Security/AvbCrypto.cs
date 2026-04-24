@@ -1,5 +1,6 @@
 
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Security.Cryptography;
 
 namespace FirmwareKit.AVB;
@@ -49,6 +50,121 @@ public static class AvbCrypto
             Modulus = modulus,
             Exponent = [1, 0, 1] // 65537
         };
+    }
+
+    /// <summary>
+    /// Encodes an RSA public key to AVB binary public-key format.
+    /// Layout: key_num_bits (be), n0inv (be), modulus (be), rr (be).
+    /// </summary>
+    /// <param name="keyParameters">RSA key parameters with modulus and exponent.</param>
+    /// <returns>Serialized AVB public key bytes.</returns>
+    public static byte[] EncodeRSAPublicKey(RSAParameters keyParameters)
+    {
+        if (keyParameters.Modulus == null || keyParameters.Modulus.Length == 0)
+        {
+            throw new ArgumentException("RSA modulus is required.");
+        }
+
+        if (keyParameters.Exponent == null || keyParameters.Exponent.Length == 0)
+        {
+            throw new ArgumentException("RSA exponent is required.");
+        }
+
+        var modulus = keyParameters.Modulus;
+        var exponent = ReadUInt32BigEndian(keyParameters.Exponent);
+        if (exponent != Exponent)
+        {
+            throw new NotSupportedException($"Only RSA exponent {Exponent} is supported by AVB tooling.");
+        }
+
+        var keyNumBits = modulus.Length * 8;
+        var n = FromBigEndianUnsigned(modulus);
+        if (n.Sign <= 0)
+        {
+            throw new ArgumentException("Invalid RSA modulus.");
+        }
+
+        var n0 = (uint)(n % (BigInteger.One << 32));
+        if ((n0 & 1u) == 0u)
+        {
+            throw new ArgumentException("RSA modulus must be odd.");
+        }
+
+        var n0inv = ComputeN0Inv(n0);
+        var rr = BigInteger.ModPow(new BigInteger(2), 2 * keyNumBits, n);
+        var rrBytes = ToBigEndianUnsigned(rr, modulus.Length);
+
+        var output = new byte[8 + modulus.Length + rrBytes.Length];
+        BinaryPrimitives.WriteUInt32BigEndian(output.AsSpan(0, 4), (uint)keyNumBits);
+        BinaryPrimitives.WriteUInt32BigEndian(output.AsSpan(4, 4), n0inv);
+        modulus.CopyTo(output.AsSpan(8, modulus.Length));
+        rrBytes.CopyTo(output.AsSpan(8 + modulus.Length, rrBytes.Length));
+        return output;
+    }
+
+    private static uint ReadUInt32BigEndian(ReadOnlySpan<byte> data)
+    {
+        uint value = 0;
+        for (var i = 0; i < data.Length; i++)
+        {
+            value = (value << 8) | data[i];
+        }
+
+        return value;
+    }
+
+    private static BigInteger FromBigEndianUnsigned(ReadOnlySpan<byte> bytes)
+    {
+        var le = new byte[bytes.Length + 1];
+        for (var i = 0; i < bytes.Length; i++)
+        {
+            le[i] = bytes[bytes.Length - 1 - i];
+        }
+
+        le[bytes.Length] = 0;
+        return new BigInteger(le);
+    }
+
+    private static byte[] ToBigEndianUnsigned(BigInteger value, int fixedSize)
+    {
+        if (value.Sign < 0)
+        {
+            throw new ArgumentException("Only non-negative integers are supported.");
+        }
+
+        var le = value.ToByteArray();
+        var significantLength = le.Length;
+        while (significantLength > 1 && le[significantLength - 1] == 0)
+        {
+            significantLength--;
+        }
+
+        if (significantLength > fixedSize)
+        {
+            throw new ArgumentException("Value does not fit in requested output size.");
+        }
+
+        var be = new byte[fixedSize];
+        for (var i = 0; i < significantLength; i++)
+        {
+            be[fixedSize - 1 - i] = le[i];
+        }
+
+        return be;
+    }
+
+    private static uint ComputeN0Inv(uint n0)
+    {
+        unchecked
+        {
+            uint inv = 1;
+            for (var i = 0; i < 5; i++)
+            {
+                inv *= 2 - (n0 * inv);
+            }
+
+            return 0u - inv;
+        }
     }
 
     /// <summary>

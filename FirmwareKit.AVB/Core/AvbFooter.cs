@@ -134,7 +134,7 @@ public readonly record struct AvbFooter
         BinaryPrimitives.WriteUInt64BigEndian(data[20..28], VBMetaOffset);
         BinaryPrimitives.WriteUInt64BigEndian(data[28..36], VBMetaSize);
         var tempReserved = _reserved;
-#if NETCOREAPP
+#if NET8_0_OR_GREATER
         MemoryMarshal.Write(data[36..64], in tempReserved);
 #else
         MemoryMarshal.Write(data[36..64], ref tempReserved);

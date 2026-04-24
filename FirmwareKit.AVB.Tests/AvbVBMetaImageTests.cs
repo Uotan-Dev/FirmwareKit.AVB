@@ -1,6 +1,6 @@
 using System.Buffers.Binary;
 
-namespace LibAVBSharp.Tests;
+namespace FirmwareKit.AVB.Tests;
 
 public class AvbVBMetaImageTests
 {

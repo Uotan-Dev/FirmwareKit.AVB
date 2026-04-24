@@ -1,4 +1,4 @@
-namespace LibAVBSharp.Tests;
+namespace FirmwareKit.AVB.Tests;
 
 public class AvbCryptoTests
 {
@@ -25,5 +25,18 @@ public class AvbCryptoTests
         var data = "foobar"u8;
         var hash = AvbCrypto.CalculateHash(AvbAlgorithmType.Sha512Rsa4096, data);
         Assert.Equal("0a50261ebd1a390fed2bf326f2673c145582a6342d523204973d0219337f81616a8069b012587cf5635f6925f1b56c360230c19b273500ee013e030601bf2425", AvbUtil.Bin2Hex(hash));
+    }
+
+    [Fact]
+    public void EncodeAndParseRsaPublicKey_RoundTripModulus()
+    {
+        using var rsa = System.Security.Cryptography.RSA.Create(2048);
+        var original = rsa.ExportParameters(includePrivateParameters: false);
+
+        var encoded = AvbCrypto.EncodeRSAPublicKey(original);
+        var parsed = AvbCrypto.ParseRSAPublicKey(encoded);
+
+        Assert.Equal(original.Modulus, parsed.Modulus);
+        Assert.Equal(new byte[] { 1, 0, 1 }, parsed.Exponent);
     }
 }

@@ -61,8 +61,7 @@ public sealed class AvbVBMetaImage
         }
 
 
-        if (Header.RequiredLibavbVersionMajor != AvbVBMetaImageHeader.ExpectedVersionMajor ||
-            Header.RequiredLibavbVersionMinor > AvbVBMetaImageHeader.MaxSupportedVersionMinor)
+        if (!AvbVersion.IsCompatible(Header.RequiredLibavbVersionMajor, Header.RequiredLibavbVersionMinor))
         {
             return AvbVBMetaVerifyResult.UnsupportedVersion;
         }
@@ -147,7 +146,7 @@ public sealed class AvbVBMetaImage
         var computedHash = CalculateVBMetaHash(algorithm, headerBlock, auxiliaryBlock);
 
         var storedHash = AuthenticationData.Span.Slice((int)Header.HashOffset, (int)Header.HashSize);
-        if (!computedHash.AsSpan().SequenceEqual(storedHash))
+        if (AvbUtil.SafeMemCmp(computedHash, storedHash) != 0)
         {
             return AvbVBMetaVerifyResult.HashMismatch;
         }

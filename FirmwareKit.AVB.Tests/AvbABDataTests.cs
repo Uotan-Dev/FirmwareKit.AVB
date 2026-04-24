@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LibAVBSharp.Tests;
+namespace FirmwareKit.AVB.Tests;
 
 public class AvbABDataTests
 {

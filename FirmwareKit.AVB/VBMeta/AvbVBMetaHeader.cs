@@ -1,6 +1,5 @@
 
 using System.Buffers.Binary;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
@@ -25,13 +24,13 @@ public record struct AvbVBMetaImageHeader
     public const int ReleaseStringSize = 48;
 
     /// <summary>The expected major version of the VBMeta image.</summary>
-    public const uint ExpectedVersionMajor = 1;
+    public const uint ExpectedVersionMajor = AvbVersion.Major;
 
     /// <summary>The maximum supported minor version of the VBMeta image.</summary>
-    public const uint MaxSupportedVersionMinor = 3;
+    public const uint MaxSupportedVersionMinor = AvbVersion.Minor;
 
     /// <summary>The expected sub-version of the VBMeta image.</summary>
-    public const uint ExpectedVersionSub = 0;
+    public const uint ExpectedVersionSub = AvbVersion.Sub;
 
     private uint _magic0;
 
@@ -229,7 +228,7 @@ public record struct AvbVBMetaImageHeader
         BinaryPrimitives.WriteUInt32BigEndian(data[124..128], RollbackIndexLocation);
         var tempRelease = _releaseString;
         var tempReserved = _reserved;
-#if NETCOREAPP
+#if NET8_0_OR_GREATER
         MemoryMarshal.Write(data[128..176], in tempRelease);
         MemoryMarshal.Write(data[176..256], in tempReserved);
 #else

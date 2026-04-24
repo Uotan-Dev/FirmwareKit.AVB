@@ -14,6 +14,12 @@ public class AvbAbFlow(IAvbOps ops)
     private static readonly string[] SlotSuffixes = ["_a", "_b"];
 
     /// <summary>
+    /// Converts A/B flow result to a stable libavb-style string.
+    /// Equivalent to 'avb_ab_flow_result_to_string()'.
+    /// </summary>
+    public static string ResultToString(AvbAbFlowResult result) => AvbResultStrings.ToLibAvbString(result);
+
+    /// <summary>
     /// Selects the best bootable slot based on the A/B metadata and verification results.
     /// </summary>
     /// <param name="slotSuffix">Returns the suffix of the selected slot (e.g., "_a" or "_b").</param>
