@@ -1,3 +1,7 @@
+using FirmwareKit.AVB.Enums;
+using FirmwareKit.AVB.Security;
+using FirmwareKit.AVB.Utilities;
+
 namespace FirmwareKit.AVB.Tests;
 
 public class AvbCryptoTests

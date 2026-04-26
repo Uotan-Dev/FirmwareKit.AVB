@@ -1,3 +1,4 @@
+using FirmwareKit.AVB.Ab;
 using System.Text;
 
 namespace FirmwareKit.AVB.Tests;
@@ -55,5 +56,30 @@ public class AvbABDataTests
 
         var restored = AvbAbData.FromBytes(bytes);
         Assert.False(restored.IsValid());
+    }
+
+    [Fact]
+    public void SupportSameMajorFutureMinorVersion()
+    {
+        var data = AvbAbData.CreateDefault();
+        data.VersionMinor += 1;
+        var bytes = data.ToBytes();
+
+        var restored = AvbAbData.FromBytes(bytes);
+        Assert.True(restored.IsValid());
+        Assert.Equal(data.VersionMinor, restored.VersionMinor);
+    }
+
+    [Fact]
+    public void AbData_Size_ShouldMatchConstant()
+    {
+        Assert.Equal(32, AvbAbData.Size);
+    }
+
+    [Fact]
+    public void MaxPriorityAndTriesRemaining_ShouldMatchLibAvb()
+    {
+        Assert.Equal(15, AvbAbSlotData.MaxPriority);
+        Assert.Equal(7, AvbAbSlotData.MaxTriesRemaining);
     }
 }

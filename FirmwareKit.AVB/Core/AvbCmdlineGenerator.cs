@@ -1,9 +1,17 @@
+using FirmwareKit.AVB.Abstractions;
+using FirmwareKit.AVB.Descriptors;
+using FirmwareKit.AVB.Enums;
+using FirmwareKit.AVB.Utilities;
+using FirmwareKit.AVB.VBMeta;
+using FirmwareKit.AVB.Verification;
 using System.Text;
 
-namespace FirmwareKit.AVB;
+namespace FirmwareKit.AVB.Core;
 /// <summary>
 /// Generates the kernel command-line fragment for Android Verified Boot.
 /// Equivalent to the logic in 'avb_slot_verify.c' for command-line generation.
+/// <para>生成Android Verified Boot的内核命令行片段。</para>
+/// <para>等价于'avb_slot_verify.c'中用于命令行生成的逻辑。</para>
 /// </summary>
 public static class AvbCmdlineGenerator
 {
@@ -16,12 +24,17 @@ public static class AvbCmdlineGenerator
 
     /// <summary>
     /// Generates the kernel command-line based on verification data and slot information.
+    /// <para>基于验证数据和槽位信息生成内核命令行。</para>
     /// </summary>
-    /// <param name="data">The verification data containing loaded VBMeta images and results.</param>
+    /// <param name="data">The verification data containing loaded VBMeta images and results.
+    /// <para>包含已加载VBMeta镜像和结果的验证数据。</para></param>
     /// <param name="ops">The <see cref="IAvbOps"/> instance for platform-specific queries.</param>
-    /// <param name="flags">Verification flags used during slot verification.</param>
-    /// <param name="hashtreeErrorMode">The original hashtree error mode before resolution.</param>
-    /// <returns>A string containing the generated kernel command-line fragment.</returns>
+    /// <param name="flags">Verification flags used during slot verification.
+    /// <para>槽位验证期间使用的验证标志。</para></param>
+    /// <param name="hashtreeErrorMode">The original hashtree error mode before resolution.
+    /// <para>解析前的原始哈希树错误模式。</para></param>
+    /// <returns>A string containing the generated kernel command-line fragment.
+    /// <para>包含生成的内核命令行片段的字符串。</para></returns>
     public static string Generate(AvbSlotVerifyData data, IAvbOps ops, AvbSlotVerifyFlags flags, AvbHashtreeErrorMode hashtreeErrorMode)
     {
         var sb = new StringBuilder();
@@ -80,7 +93,7 @@ public static class AvbCmdlineGenerator
 
         if (data.VbmetaImages.Count > 0)
         {
-            AppendOption(sb, "androidboot.vbmeta.avb_version", $"{AvbVBMetaImageHeader.ExpectedVersionMajor}.{AvbVBMetaImageHeader.MaxSupportedVersionMinor}.{AvbVBMetaImageHeader.ExpectedVersionSub}");
+            AppendOption(sb, "androidboot.vbmeta.avb_version", $"{AvbVBMetaImageHeader.ExpectedVersionMajor}.{AvbVBMetaImageHeader.MaxSupportedVersionMinor}");
 
             var useSha512 = data.ToplevelAlgorithmType is >= AvbAlgorithmType.Sha512Rsa2048 and not AvbAlgorithmType.None;
             var digestType = useSha512 ? AvbDigestType.Sha512 : AvbDigestType.Sha256;
@@ -155,14 +168,22 @@ public static class AvbCmdlineGenerator
     /// <summary>
     /// Performs token substitutions (e.g., $(ANDROID_SYSTEM_PARTUUID)) in a command-line string.
     /// Equivalent to 'avb_sub_cmdline' in libavb.
+    /// <para>在命令行字符串中执行令牌替换（例如 $(ANDROID_SYSTEM_PARTUUID)）。</para>
+    /// <para>等价于libavb中的'avb_sub_cmdline'。</para>
     /// </summary>
-    /// <param name="cmdline">The command-line string with tokens.</param>
-    /// <param name="data">The verification data containing loaded partitions and digests.</param>
+    /// <param name="cmdline">The command-line string with tokens.
+    /// <para>带有令牌的命令行字符串。</para></param>
+    /// <param name="data">The verification data containing loaded partitions and digests.
+    /// <para>包含已加载分区和摘要的验证数据。</para></param>
     /// <param name="ops">The <see cref="IAvbOps"/> instance for platform-specific queries.</param>
-    /// <param name="slotSuffix">The A/B slot suffix.</param>
-    /// <returns>A new string with tokens replaced.</returns>
+    /// <param name="slotSuffix">The A/B slot suffix.
+    /// <para>A/B槽位后缀。</para></param>
+    /// <returns>A new string with tokens replaced.
+    /// <para>替换令牌后的新字符串。</para></returns>
     public static string SubstituteTokens(string cmdline, AvbSlotVerifyData data, IAvbOps ops, string slotSuffix)
     {
+        var substitutions = BuildSubstitutionList(data, ops, slotSuffix);
+
         var aospTokens = new[]
         {
             (Token: SystemPartUuidToken, Name: "system"),
@@ -181,7 +202,9 @@ public static class AvbCmdlineGenerator
                 {
                     partitionName = "boot";
                 }
-                cmdline = Substitute(cmdline, token, GetGuid(ops, partitionName + slotSuffix));
+                var value = GetGuid(ops, partitionName + slotSuffix);
+                cmdline = Substitute(cmdline, token, value);
+                substitutions.TryAdd(token, value);
             }
         }
 
@@ -192,6 +215,7 @@ public static class AvbCmdlineGenerator
             var token = pair.Key;
             var value = pair.Value;
             cmdline = Substitute(cmdline, token, value);
+            substitutions.TryAdd(token, value);
         }
 
         // Legacy/Custom token replacements (backward compatibility or extensions)
@@ -200,7 +224,9 @@ public static class AvbCmdlineGenerator
             var token = $"$(ANDROID_{p.PartitionName.ToUpperInvariant()}_PARTUUID)";
             if (!aospTokens.Any(t => t.Token == token) && cmdline.Contains(token))
             {
-                cmdline = Substitute(cmdline, token, GetGuid(ops, p.PartitionName + slotSuffix));
+                var value = GetGuid(ops, p.PartitionName + slotSuffix);
+                cmdline = Substitute(cmdline, token, value);
+                substitutions.TryAdd(token, value);
             }
         }
 
@@ -209,18 +235,54 @@ public static class AvbCmdlineGenerator
             var topAlgo = data.ToplevelAlgorithmType;
             var digestType = topAlgo <= AvbAlgorithmType.Sha256Rsa8192 ? AvbDigestType.Sha256 : AvbDigestType.Sha512;
             var digest = data.VbmetaDigest.Length > 0 ? data.VbmetaDigest : AvbSlotVerifier.CalculateVBMetaDigest(data, digestType);
-            cmdline = Substitute(cmdline, VbmetaDigestToken, AvbCompat.ToHexString(digest).ToLowerInvariant());
+            var value = AvbCompat.ToHexString(digest).ToLowerInvariant();
+            cmdline = Substitute(cmdline, VbmetaDigestToken, value);
+            substitutions.TryAdd(VbmetaDigestToken, value);
         }
 
-        return cmdline;
+        return substitutions.Apply(cmdline);
+    }
+
+    /// <summary>
+    /// Builds a command-line substitution list from current slot verification data.
+    /// <para>从当前槽位验证数据构建命令行替换列表。</para>
+    /// </summary>
+    public static AvbCmdlineSubstitutionList BuildSubstitutionList(AvbSlotVerifyData data, IAvbOps ops, string slotSuffix)
+    {
+        var list = new AvbCmdlineSubstitutionList();
+
+        foreach (var pair in data.AdditionalSubstitutions)
+        {
+            list.TryAdd(pair.Key, pair.Value);
+        }
+
+        foreach (var p in data.LoadedPartitions)
+        {
+            if (p.Digest != null && p.Digest.Length > 0)
+            {
+                list.TryAddRootDigestSubstitution(p.PartitionName, p.Digest);
+            }
+
+            var token = $"$(ANDROID_{p.PartitionName.ToUpperInvariant()}_PARTUUID)";
+            var guid = GetGuid(ops, p.PartitionName + slotSuffix);
+            if (!string.IsNullOrEmpty(guid))
+            {
+                list.TryAdd(token, guid);
+            }
+        }
+
+        return list;
     }
 
     /// <summary>
     /// Appends a key-value pair option to the command-line string builder.
+    /// <para>向命令行字符串生成器追加键值对选项。</para>
     /// </summary>
     /// <param name="sb">The <see cref="StringBuilder"/> to append to.</param>
-    /// <param name="key">The option key.</param>
-    /// <param name="value">The option value.</param>
+    /// <param name="key">The option key.
+    /// <para>选项键。</para></param>
+    /// <param name="value">The option value.
+    /// <para>选项值。</para></param>
     private static void AppendOption(StringBuilder sb, string key, string value)
     {
         if (sb.Length > 0)
@@ -233,18 +295,26 @@ public static class AvbCmdlineGenerator
 
     /// <summary>
     /// Substitutes a token within the command-line string with a specified value.
+    /// <para>在命令行字符串中用指定值替换令牌。</para>
     /// </summary>
-    /// <param name="cmdline">The original command-line string.</param>
-    /// <param name="token">The token to search for.</param>
-    /// <param name="value">The value to replace the token with.</param>
-    /// <returns>The command-line string after substitution.</returns>
+    /// <param name="cmdline">The original command-line string.
+    /// <para>原始命令行字符串。</para></param>
+    /// <param name="token">The token to search for.
+    /// <para>要搜索的令牌。</para></param>
+    /// <param name="value">The value to replace the token with.
+    /// <para>用于替换令牌的值。</para></param>
+    /// <returns>The command-line string after substitution.
+    /// <para>替换后的命令行字符串。</para></returns>
     private static string Substitute(string cmdline, string token, string value) => string.IsNullOrEmpty(value) ? cmdline : cmdline.Replace(token, value);
 
     /// <summary>
     /// Retrieves the partition UUID for the specified partition name.
+    /// <para>检索指定分区名称的分区UUID。</para>
     /// </summary>
     /// <param name="ops">The <see cref="IAvbOps"/> instance to use.</param>
-    /// <param name="partitionName">The name of the partition.</param>
-    /// <returns>The partition UUID if available, otherwise an empty string.</returns>
+    /// <param name="partitionName">The name of the partition.
+    /// <para>分区名称。</para></param>
+    /// <returns>The partition UUID if available, otherwise an empty string.
+    /// <para>如果可用则返回分区UUID，否则返回空字符串。</para></returns>
     private static string GetGuid(IAvbOps ops, string partitionName) => ops.GetUniqueGuidForPartition(partitionName, out var guid) == AvbIOResult.Ok ? guid : "";
 }

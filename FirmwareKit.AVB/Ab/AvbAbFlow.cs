@@ -1,32 +1,52 @@
-namespace FirmwareKit.AVB;
+using FirmwareKit.AVB.Abstractions;
+using FirmwareKit.AVB.Enums;
+using FirmwareKit.AVB.Utilities;
+using FirmwareKit.AVB.Verification;
+
+namespace FirmwareKit.AVB.Ab;
 
 /// <summary>
 /// Implements the A/B boot flow logic for Android Verified Boot, equivalent to 'libavb_ab'.
 /// This class handles slot selection and metadata management for devices with two bootable slots.
+/// <para>实现Android Verified Boot的A/B启动流程逻辑，等价于'libavb_ab'。</para>
+/// <para>此类处理具有两个可启动槽位设备的槽位选择和元数据管理。</para>
 /// </summary>
-/// <remarks>
-/// Initializes a new instance of the <see cref="AvbAbFlow"/> class.
-/// </remarks>
-/// <param name="ops">The <see cref="IAvbOps"/> implementation to use for I/O operations.</param>
-public class AvbAbFlow(IAvbOps ops)
+public sealed class AvbAbFlow
 {
-    private readonly IAvbOps _ops = ops;
-    private static readonly string[] SlotSuffixes = ["_a", "_b"];
+    private readonly IAvbOps _ops;
+    private static readonly string[] SlotSuffixes = new[] { "_a", "_b" };
+
+    /// <summary>
+    /// Initializes a new instance of the <see cref="AvbAbFlow"/> class.
+    /// <para>初始化<see cref="AvbAbFlow"/>类的新实例。</para>
+    /// </summary>
+    public AvbAbFlow(IAvbOps ops)
+    {
+        _ops = ops;
+    }
 
     /// <summary>
     /// Converts A/B flow result to a stable libavb-style string.
     /// Equivalent to 'avb_ab_flow_result_to_string()'.
+    /// <para>将A/B流程结果转换为稳定的libavb风格字符串。</para>
+    /// <para>等价于'avb_ab_flow_result_to_string()'。</para>
     /// </summary>
     public static string ResultToString(AvbAbFlowResult result) => AvbResultStrings.ToLibAvbString(result);
 
     /// <summary>
     /// Selects the best bootable slot based on the A/B metadata and verification results.
+    /// <para>根据A/B元数据和验证结果选择最佳可启动槽位。</para>
     /// </summary>
-    /// <param name="slotSuffix">Returns the suffix of the selected slot (e.g., "_a" or "_b").</param>
-    /// <param name="verifyData">Returns the verification data for the selected slot.</param>
-    /// <param name="flags">The verification flags.</param>
-    /// <param name="hashtreeErrorMode">The hashtree error mode.</param>
-    /// <returns>An <see cref="AvbAbFlowResult"/> indicating the result of the selection process.</returns>
+    /// <param name="slotSuffix">Returns the suffix of the selected slot (e.g., "_a" or "_b").
+    /// <para>返回所选槽位的后缀（例如"_a"或"_b"）。</para></param>
+    /// <param name="verifyData">Returns the verification data for the selected slot.
+    /// <para>返回所选槽位的验证数据。</para></param>
+    /// <param name="flags">The verification flags.
+    /// <para>验证标志。</para></param>
+    /// <param name="hashtreeErrorMode">The hashtree error mode.
+    /// <para>哈希树错误模式。</para></param>
+    /// <returns>An <see cref="AvbAbFlowResult"/> indicating the result of the selection process.
+    /// <para>指示选择过程结果的<see cref="AvbAbFlowResult"/>。</para></returns>
     public AvbAbFlowResult SelectSlot(out string slotSuffix, out AvbSlotVerifyData? verifyData, AvbSlotVerifyFlags flags = AvbSlotVerifyFlags.None, AvbHashtreeErrorMode hashtreeErrorMode = AvbHashtreeErrorMode.Restart)
     {
         slotSuffix = "";
@@ -39,7 +59,6 @@ public class AvbAbFlow(IAvbOps ops)
             {
                 return AvbAbFlowResult.ErrorOom;
             }
-            // If we can't read it, create a default one
             abData = AvbAbData.CreateDefault();
             _ops.WriteAbMetadata(abData);
         }
@@ -50,7 +69,7 @@ public class AvbAbFlow(IAvbOps ops)
             _ops.WriteAbMetadata(abData);
         }
 
-        var abDataOrig = abData; // Keep track of changes
+        var abDataOrig = abData;
         abData.SlotA = NormalizeSlot(abData.SlotA);
         abData.SlotB = NormalizeSlot(abData.SlotB);
 
@@ -144,7 +163,6 @@ public class AvbAbFlow(IAvbOps ops)
 
         var ret = sawAndAllowedVerificationError ? AvbAbFlowResult.OkWithVerificationError : AvbAbFlowResult.Ok;
 
-        // ... and decrement tries remaining, if applicable.
         var bestSlotMetadata = bestSlot == 0 ? abData.SlotA : abData.SlotB;
         if (bestSlotMetadata.SuccessfulBoot == 0 && bestSlotMetadata.TriesRemaining > 0)
         {
@@ -166,8 +184,10 @@ public class AvbAbFlow(IAvbOps ops)
 
     /// <summary>
     /// Marks the specified slot as active.
+    /// <para>将指定槽位标记为活动。</para>
     /// </summary>
-    /// <param name="slotIndex">Index of the slot (0 for _a, 1 for _b).</param>
+    /// <param name="slotIndex">Index of the slot (0 for _a, 1 for _b).
+    /// <para>槽位索引（0表示_a，1表示_b）。</para></param>
     public AvbIOResult MarkSlotActive(int slotIndex)
     {
         if (slotIndex is not 0 and not 1)
@@ -209,8 +229,10 @@ public class AvbAbFlow(IAvbOps ops)
 
     /// <summary>
     /// Marks the specified slot as unbootable.
+    /// <para>将指定槽位标记为不可启动。</para>
     /// </summary>
-    /// <param name="slotIndex">Index of the slot (0 for _a, 1 for _b).</param>
+    /// <param name="slotIndex">Index of the slot (0 for _a, 1 for _b).
+    /// <para>槽位索引（0表示_a，1表示_b）。</para></param>
     public AvbIOResult MarkSlotUnbootable(int slotIndex)
     {
         if (slotIndex is not 0 and not 1)
@@ -240,8 +262,10 @@ public class AvbAbFlow(IAvbOps ops)
 
     /// <summary>
     /// Marks the specified slot as having booted successfully.
+    /// <para>将指定槽位标记为已成功启动。</para>
     /// </summary>
-    /// <param name="slotIndex">Index of the slot (0 for _a, 1 for _b).</param>
+    /// <param name="slotIndex">Index of the slot (0 for _a, 1 for _b).
+    /// <para>槽位索引（0表示_a，1表示_b）。</para></param>
     public AvbIOResult MarkSlotSuccessful(int slotIndex)
     {
         if (slotIndex is not 0 and not 1)
@@ -279,9 +303,12 @@ public class AvbAbFlow(IAvbOps ops)
 
     /// <summary>
     /// Gets the slot index from a slot suffix.
+    /// <para>从槽位后缀获取槽位索引。</para>
     /// </summary>
-    /// <param name="suffix">The slot suffix ("_a" or "_b").</param>
-    /// <returns>The slot index (0 for _a, 1 for _b).</returns>
+    /// <param name="suffix">The slot suffix ("_a" or "_b").
+    /// <para>槽位后缀（"_a"或"_b"）。</para></param>
+    /// <returns>The slot index (0 for _a, 1 for _b).
+    /// <para>槽位索引（0表示_a，1表示_b）。</para></returns>
     public static int GetSlotIndex(string suffix)
     {
         for (var i = 0; i < SlotSuffixes.Length; i++)
@@ -297,17 +324,24 @@ public class AvbAbFlow(IAvbOps ops)
 
     /// <summary>
     /// Gets the slot suffix for a slot index.
+    /// <para>获取槽位索引对应的槽位后缀。</para>
     /// </summary>
-    /// <param name="slotIndex">The slot index (0 for _a, 1 for _b).</param>
-    /// <returns>The slot suffix.</returns>
+    /// <param name="slotIndex">The slot index (0 for _a, 1 for _b).
+    /// <para>槽位索引（0表示_a，1表示_b）。</para></param>
+    /// <returns>The slot suffix.
+    /// <para>槽位后缀。</para></returns>
     public static string GetSlotSuffix(int slotIndex) => slotIndex >= 0 && slotIndex < SlotSuffixes.Length ? SlotSuffixes[slotIndex] : string.Empty;
 
     /// <summary>
     /// Updates the global rollback indices based on the minimum values from all verified slots.
     /// Equivalent to 'update_global_rollback_indices()' in libavb_ab.
+    /// <para>根据所有已验证槽位的最小值更新全局回滚索引。</para>
+    /// <para>等价于libavb_ab中的'update_global_rollback_indices()'。</para>
     /// </summary>
-    /// <param name="list">The list of verification data for each slot.</param>
-    /// <returns>The result of the I/O operation.</returns>
+    /// <param name="list">The list of verification data for each slot.
+    /// <para>每个槽位的验证数据列表。</para></param>
+    /// <returns>The result of the I/O operation.
+    /// <para>I/O操作的结果。</para></returns>
     private AvbIOResult UpdateGlobalRollbackIndices(AvbSlotVerifyData?[] list)
     {
         for (var i = 0; i < 32; i++)
@@ -351,29 +385,33 @@ public class AvbAbFlow(IAvbOps ops)
 
     /// <summary>
     /// Determines whether a slot is considered bootable.
+    /// <para>确定槽位是否被视为可启动。</para>
     /// </summary>
-    /// <param name="slot">The slot metadata to check.</param>
-    /// <returns>True if bootable, false otherwise.</returns>
+    /// <param name="slot">The slot metadata to check.
+    /// <para>要检查的槽位元数据。</para></param>
+    /// <returns>True if bootable, false otherwise.
+    /// <para>如果可启动则返回true，否则返回false。</para></returns>
     private static bool IsBootable(AvbAbSlotData slot) =>
         slot.Priority > 0 && (slot.SuccessfulBoot != 0 || slot.TriesRemaining > 0);
 
     /// <summary>
     /// Normalizes the slot metadata to ensure a consistent state.
+    /// <para>规范化槽位元数据以确保一致的状态。</para>
     /// </summary>
-    /// <param name="slot">The slot metadata to normalize.</param>
-    /// <returns>The normalized slot metadata.</returns>
+    /// <param name="slot">The slot metadata to normalize.
+    /// <para>要规范化的槽位元数据。</para></param>
+    /// <returns>The normalized slot metadata.
+    /// <para>规范化后的槽位元数据。</para></returns>
     private static AvbAbSlotData NormalizeSlot(AvbAbSlotData slot)
     {
         if (slot.Priority > 0)
         {
             if (slot.TriesRemaining == 0 && slot.SuccessfulBoot == 0)
             {
-                /* We've exhausted all tries -> unbootable. */
                 return SetUnbootable();
             }
             if (slot.TriesRemaining > 0 && slot.SuccessfulBoot != 0)
             {
-                /* Illegal state - tries_remaining should be 0 if successful_boot is set. */
                 return SetUnbootable();
             }
         }
@@ -386,8 +424,10 @@ public class AvbAbFlow(IAvbOps ops)
 
     /// <summary>
     /// Resets a slot to an unbootable state.
+    /// <para>将槽位重置为不可启动状态。</para>
     /// </summary>
-    /// <returns>A new <see cref="AvbAbSlotData"/> instance representing an unbootable slot.</returns>
+    /// <returns>A new <see cref="AvbAbSlotData"/> instance representing an unbootable slot.
+    /// <para>表示不可启动槽位的新<see cref="AvbAbSlotData"/>实例。</para></returns>
     private static AvbAbSlotData SetUnbootable() =>
         new()
         { Priority = 0, TriesRemaining = 0, SuccessfulBoot = 0 };

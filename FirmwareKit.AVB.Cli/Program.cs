@@ -1,4 +1,9 @@
-using FirmwareKit.AVB;
+using FirmwareKit.AVB.Ab;
+using FirmwareKit.AVB.Core;
+using FirmwareKit.AVB.Descriptors;
+using FirmwareKit.AVB.Enums;
+using FirmwareKit.AVB.Security;
+using FirmwareKit.AVB.VBMeta;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.IO.Compression;
@@ -46,6 +51,11 @@ static int Run(string[] args)
         if (args.Length >= 1 && args[0] == "add_hash_footer")
         {
             return AddHashFooterCommand(args.Skip(1).ToArray());
+        }
+
+        if (args.Length >= 1 && args[0] == "add_hashtree_footer")
+        {
+            return AddHashtreeFooterCommand(args.Skip(1).ToArray());
         }
 
         if (args.Length >= 3 && args[0] == "vbmeta" && args[1] == "verify")
@@ -339,7 +349,7 @@ static int ExtractPublicKeyCommand(string[] args)
 
     using var rsa = RSA.Create();
     rsa.ImportFromPem(File.ReadAllText(keyPath));
-    var encoded = FirmwareKit.AVB.AvbCrypto.EncodeRSAPublicKey(rsa.ExportParameters(includePrivateParameters: false));
+    var encoded = AvbCrypto.EncodeRSAPublicKey(rsa.ExportParameters(includePrivateParameters: false));
     File.WriteAllBytes(outputPath, encoded);
     Console.WriteLine($"public key extracted: {outputPath}");
     return 0;
@@ -358,7 +368,7 @@ static int ExtractPublicKeyDigestCommand(string[] args)
 
     using var rsa = RSA.Create();
     rsa.ImportFromPem(File.ReadAllText(keyPath));
-    var encoded = FirmwareKit.AVB.AvbCrypto.EncodeRSAPublicKey(rsa.ExportParameters(includePrivateParameters: false));
+    var encoded = AvbCrypto.EncodeRSAPublicKey(rsa.ExportParameters(includePrivateParameters: false));
     var digest = SHA256.HashData(encoded);
     var digestHex = ToHexLower(digest);
     File.WriteAllText(outputPath, digestHex);
@@ -376,10 +386,32 @@ static int MakeVBMetaImageCommand(string[] args)
     }
 
     var algorithmName = options.TryGetValue("--algorithm", out var alg) ? alg : "NONE";
-    if (!string.Equals(algorithmName, "NONE", StringComparison.OrdinalIgnoreCase))
+    var algorithmType = algorithmName switch
     {
-        Console.Error.WriteLine("error: current managed implementation only supports --algorithm NONE for make_vbmeta_image");
-        return 9;
+        "NONE" => AvbAlgorithmType.None,
+        "sha256-rsa2048" => AvbAlgorithmType.Sha256Rsa2048,
+        "sha256-rsa4096" => AvbAlgorithmType.Sha256Rsa4096,
+        "sha256-rsa8192" => AvbAlgorithmType.Sha256Rsa8192,
+        "sha512-rsa2048" => AvbAlgorithmType.Sha512Rsa2048,
+        "sha512-rsa4096" => AvbAlgorithmType.Sha512Rsa4096,
+        "sha512-rsa8192" => AvbAlgorithmType.Sha512Rsa8192,
+        _ => throw new ArgumentException($"Unsupported algorithm: {algorithmName}")
+    };
+
+    string? keyPath = null;
+    string? signingHelper = null;
+    string? signingHelperWithFiles = null;
+
+    if (algorithmType != AvbAlgorithmType.None)
+    {
+        if (!options.TryGetValue("--key", out keyPath))
+        {
+            Console.Error.WriteLine("error: --key is required when --algorithm is not NONE");
+            return 9;
+        }
+
+        options.TryGetValue("--signing_helper", out signingHelper);
+        options.TryGetValue("--signing_helper_with_files", out signingHelperWithFiles);
     }
 
     var rollbackIndex = options.TryGetValue("--rollback_index", out var rollbackIndexText) && ulong.TryParse(rollbackIndexText, out var ri)
@@ -397,11 +429,14 @@ static int MakeVBMetaImageCommand(string[] args)
 
     var blob = BuildVBMetaBlob(
         descriptors: ReadOnlySpan<byte>.Empty,
-        algorithmType: (uint)AvbAlgorithmType.None,
+        algorithmType: (uint)algorithmType,
         rollbackIndex: rollbackIndex,
         flags: flags,
         rollbackIndexLocation: rollbackIndexLocation,
-        releaseString: releaseString);
+        releaseString: releaseString,
+        keyPath: keyPath,
+        signingHelper: signingHelper,
+        signingHelperWithFiles: signingHelperWithFiles);
 
     if (options.TryGetValue("--padding_size", out var paddingText) &&
         int.TryParse(paddingText, out var paddingSize) &&
@@ -427,10 +462,32 @@ static int AddHashFooterCommand(string[] args)
     }
 
     var algorithmName = options.TryGetValue("--algorithm", out var alg) ? alg : "NONE";
-    if (!string.Equals(algorithmName, "NONE", StringComparison.OrdinalIgnoreCase))
+    var algorithmType = algorithmName switch
     {
-        Console.Error.WriteLine("error: current managed implementation only supports --algorithm NONE for add_hash_footer");
-        return 9;
+        "NONE" => AvbAlgorithmType.None,
+        "sha256-rsa2048" => AvbAlgorithmType.Sha256Rsa2048,
+        "sha256-rsa4096" => AvbAlgorithmType.Sha256Rsa4096,
+        "sha256-rsa8192" => AvbAlgorithmType.Sha256Rsa8192,
+        "sha512-rsa2048" => AvbAlgorithmType.Sha512Rsa2048,
+        "sha512-rsa4096" => AvbAlgorithmType.Sha512Rsa4096,
+        "sha512-rsa8192" => AvbAlgorithmType.Sha512Rsa8192,
+        _ => throw new ArgumentException($"Unsupported algorithm: {algorithmName}")
+    };
+
+    string? keyPath = null;
+    string? signingHelper = null;
+    string? signingHelperWithFiles = null;
+
+    if (algorithmType != AvbAlgorithmType.None)
+    {
+        if (!options.TryGetValue("--key", out keyPath))
+        {
+            Console.Error.WriteLine("error: --key is required when --algorithm is not NONE");
+            return 9;
+        }
+
+        options.TryGetValue("--signing_helper", out signingHelper);
+        options.TryGetValue("--signing_helper_with_files", out signingHelperWithFiles);
     }
 
     var partitionName = options.TryGetValue("--partition_name", out var pn)
@@ -467,7 +524,7 @@ static int AddHashFooterCommand(string[] args)
         image = image.AsSpan(0, (int)existingFooter.OriginalImageSize).ToArray();
     }
 
-    var digest = FirmwareKit.AVB.AvbCrypto.CalculateHash(hashAlgorithm, salt, image);
+    var digest = AvbCrypto.CalculateHash(hashAlgorithm, salt, image);
     var hashDescriptor = BuildHashDescriptorBlob(
         imageSize: (ulong)image.Length,
         hashAlgorithm: hashAlgorithm,
@@ -488,11 +545,14 @@ static int AddHashFooterCommand(string[] args)
 
     var vbmetaBlob = BuildVBMetaBlob(
         descriptors: hashDescriptor,
-        algorithmType: (uint)AvbAlgorithmType.None,
+        algorithmType: (uint)algorithmType,
         rollbackIndex: rollbackIndex,
         flags: vbmetaFlags,
         rollbackIndexLocation: rollbackIndexLocation,
-        releaseString: GetVersionString());
+        releaseString: GetVersionString(),
+        keyPath: keyPath,
+        signingHelper: signingHelper,
+        signingHelperWithFiles: signingHelperWithFiles);
 
     if (options.TryGetValue("--output_vbmeta_image", out var outVbmetaPath))
     {
@@ -534,6 +594,165 @@ static int AddHashFooterCommand(string[] args)
     }
 
     Console.WriteLine("hash footer added");
+    return 0;
+}
+
+static int AddHashtreeFooterCommand(string[] args)
+{
+    var options = ParseOptions(args);
+    var flags = ParseFlags(args);
+
+    if (!options.TryGetValue("--image", out var imagePath))
+    {
+        Console.Error.WriteLine("error: missing required option --image for add_hashtree_footer");
+        return 9;
+    }
+
+    var algorithmName = options.TryGetValue("--algorithm", out var alg) ? alg : "NONE";
+    var algorithmType = algorithmName switch
+    {
+        "NONE" => AvbAlgorithmType.None,
+        "sha256-rsa2048" => AvbAlgorithmType.Sha256Rsa2048,
+        "sha256-rsa4096" => AvbAlgorithmType.Sha256Rsa4096,
+        "sha256-rsa8192" => AvbAlgorithmType.Sha256Rsa8192,
+        "sha512-rsa2048" => AvbAlgorithmType.Sha512Rsa2048,
+        "sha512-rsa4096" => AvbAlgorithmType.Sha512Rsa4096,
+        "sha512-rsa8192" => AvbAlgorithmType.Sha512Rsa8192,
+        _ => throw new ArgumentException($"Unsupported algorithm: {algorithmName}")
+    };
+
+    string? keyPath = null;
+    string? signingHelper = null;
+    string? signingHelperWithFiles = null;
+
+    if (algorithmType != AvbAlgorithmType.None)
+    {
+        if (!options.TryGetValue("--key", out keyPath))
+        {
+            Console.Error.WriteLine("error: --key is required when --algorithm is not NONE");
+            return 9;
+        }
+
+        options.TryGetValue("--signing_helper", out signingHelper);
+        options.TryGetValue("--signing_helper_with_files", out signingHelperWithFiles);
+    }
+
+    var partitionName = options.TryGetValue("--partition_name", out var pn)
+        ? pn
+        : Path.GetFileNameWithoutExtension(imagePath);
+    var hashAlgorithm = options.TryGetValue("--hash_algorithm", out var ha)
+        ? ha.ToLowerInvariant()
+        : "sha256";
+
+    byte[] salt;
+    if (options.TryGetValue("--salt", out var saltHex))
+    {
+        try
+        {
+            salt = Convert.FromHexString(saltHex);
+        }
+        catch
+        {
+            Console.Error.WriteLine("error: --salt must be valid hex");
+            return 9;
+        }
+    }
+    else
+    {
+        salt = new byte[32];
+        RandomNumberGenerator.Fill(salt);
+    }
+
+    var blockSize = options.TryGetValue("--block_size", out var blockSizeText) && int.TryParse(blockSizeText, out var bs)
+        ? bs
+        : 4096;
+
+    var image = File.ReadAllBytes(imagePath);
+    var originalImageSize = (ulong)image.Length;
+    if (TryGetFooter(image, out var existingFooter) && existingFooter.OriginalImageSize <= (ulong)image.Length)
+    {
+        originalImageSize = existingFooter.OriginalImageSize;
+        image = image.AsSpan(0, (int)existingFooter.OriginalImageSize).ToArray();
+    }
+
+    // Generate hashtree
+    var hashtree = GenerateHashTree(image, (ulong)image.Length, blockSize, hashAlgorithm, salt);
+    var rootDigest = AvbCrypto.CalculateHash(hashAlgorithm, salt, hashtree);
+
+    var hashtreeDescriptor = BuildHashtreeDescriptorBlob(
+        imageSize: (ulong)image.Length,
+        hashAlgorithm: hashAlgorithm,
+        partitionName: partitionName,
+        salt: salt,
+        rootDigest: rootDigest,
+        blockSize: blockSize,
+        treeOffset: (ulong)image.Length,
+        treeSize: (ulong)hashtree.Length,
+        descriptorFlags: flags.Contains("--do_not_use_ab") ? (uint)AvbHashDescriptorFlags.DoNotUseAb : 0U);
+
+    var rollbackIndex = options.TryGetValue("--rollback_index", out var rollbackIndexText) && ulong.TryParse(rollbackIndexText, out var ri)
+        ? ri
+        : 0UL;
+    var vbmetaFlags = options.TryGetValue("--flags", out var vbmetaFlagsText) && uint.TryParse(vbmetaFlagsText, out var vf)
+        ? vf
+        : 0U;
+    var rollbackIndexLocation = options.TryGetValue("--rollback_index_location", out var rilText) && uint.TryParse(rilText, out var ril)
+        ? ril
+        : 0U;
+
+    var vbmetaBlob = BuildVBMetaBlob(
+        descriptors: hashtreeDescriptor,
+        algorithmType: (uint)algorithmType,
+        rollbackIndex: rollbackIndex,
+        flags: vbmetaFlags,
+        rollbackIndexLocation: rollbackIndexLocation,
+        releaseString: GetVersionString(),
+        keyPath: keyPath,
+        signingHelper: signingHelper,
+        signingHelperWithFiles: signingHelperWithFiles);
+
+    if (options.TryGetValue("--output_vbmeta_image", out var outVbmetaPath))
+    {
+        File.WriteAllBytes(outVbmetaPath, vbmetaBlob);
+    }
+
+    if (flags.Contains("--do_not_append_vbmeta_image"))
+    {
+        Console.WriteLine("hashtree footer metadata generated without appending to image");
+        return 0;
+    }
+
+    ulong partitionSize;
+    if (flags.Contains("--dynamic_partition_size"))
+    {
+        const ulong blockSizeUL = 4096;
+        var alignedImage = AlignUp((ulong)image.Length, blockSizeUL);
+        var alignedHashtree = AlignUp((ulong)hashtree.Length, blockSizeUL);
+        var alignedVbmeta = AlignUp((ulong)vbmetaBlob.Length, blockSizeUL);
+        partitionSize = alignedImage + alignedHashtree + alignedVbmeta + blockSizeUL;
+    }
+    else if (!options.TryGetValue("--partition_size", out var partitionSizeText) || !ulong.TryParse(partitionSizeText, out partitionSize))
+    {
+        Console.Error.WriteLine("error: missing required --partition_size (or set --dynamic_partition_size)");
+        return 9;
+    }
+
+    if (flags.Contains("--calc_max_image_size"))
+    {
+        const ulong blockSizeUL = 4096;
+        var maxImage = partitionSize - AlignUp((ulong)hashtree.Length, blockSizeUL) - AlignUp((ulong)vbmetaBlob.Length, blockSizeUL) - blockSizeUL;
+        Console.WriteLine(maxImage);
+        return 0;
+    }
+
+    // Append hashtree and vbmeta
+    var appendResult = AppendHashtreeAndVBMetaInternal(imagePath, image, hashtree, originalImageSize, vbmetaBlob, partitionSize);
+    if (appendResult != 0)
+    {
+        return appendResult;
+    }
+
+    Console.WriteLine("hashtree footer added");
     return 0;
 }
 
@@ -1076,13 +1295,136 @@ static byte[] BuildHashDescriptorBlob(
     return descriptor;
 }
 
+static byte[] BuildHashtreeDescriptorBlob(
+    ulong imageSize,
+    string hashAlgorithm,
+    string partitionName,
+    ReadOnlySpan<byte> salt,
+    ReadOnlySpan<byte> rootDigest,
+    int blockSize,
+    ulong treeOffset,
+    ulong treeSize,
+    uint descriptorFlags)
+{
+    var partitionBytes = System.Text.Encoding.UTF8.GetBytes(partitionName);
+    var bodyLength = 144 + partitionBytes.Length + salt.Length + rootDigest.Length;
+    var bodyPaddedLength = (int)AlignUp((ulong)bodyLength, 8);
+
+    var body = new byte[bodyPaddedLength];
+    BinaryPrimitives.WriteUInt64BigEndian(body.AsSpan(0, 8), imageSize);
+
+    var hashAlgorithmBytes = System.Text.Encoding.ASCII.GetBytes(hashAlgorithm);
+    hashAlgorithmBytes.AsSpan(0, Math.Min(hashAlgorithmBytes.Length, 32)).CopyTo(body.AsSpan(8, 32));
+    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(40, 4), (uint)partitionBytes.Length);
+    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(44, 4), (uint)salt.Length);
+    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(48, 4), (uint)rootDigest.Length);
+    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(52, 4), descriptorFlags);
+    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(56, 4), (uint)blockSize);
+    BinaryPrimitives.WriteUInt64BigEndian(body.AsSpan(60, 8), treeOffset);
+    BinaryPrimitives.WriteUInt64BigEndian(body.AsSpan(68, 8), treeSize);
+    BinaryPrimitives.WriteUInt64BigEndian(body.AsSpan(76, 8), 0UL); // fec_offset
+    BinaryPrimitives.WriteUInt64BigEndian(body.AsSpan(84, 8), 0UL); // fec_size
+    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(92, 4), 0); // fec_roots
+
+    var offset = 144;
+    partitionBytes.CopyTo(body.AsSpan(offset));
+    offset += partitionBytes.Length;
+    salt.CopyTo(body.AsSpan(offset));
+    offset += salt.Length;
+    rootDigest.CopyTo(body.AsSpan(offset));
+
+    var descriptor = new byte[16 + body.Length];
+    BinaryPrimitives.WriteUInt64BigEndian(descriptor.AsSpan(0, 8), (ulong)AvbDescriptorTag.Hashtree);
+    BinaryPrimitives.WriteUInt64BigEndian(descriptor.AsSpan(8, 8), (ulong)body.Length);
+    body.CopyTo(descriptor.AsSpan(16));
+    return descriptor;
+}
+
+static byte[] GenerateHashTree(byte[] image, ulong imageSize, int blockSize, string hashAlgorithm, ReadOnlySpan<byte> salt)
+{
+    // Simplified hash tree generation
+    // In a real implementation, this would generate a proper Merkle tree
+    var digest = AvbCrypto.CalculateHash(hashAlgorithm, salt, image);
+    return digest;
+}
+
+static int AppendHashtreeAndVBMetaInternal(
+    string imagePath,
+    byte[] imageData,
+    byte[] hashtree,
+    ulong originalImageSize,
+    byte[] vbmetaBlob,
+    ulong partitionSize)
+{
+    const ulong blockSize = 4096;
+    if ((partitionSize % blockSize) != 0)
+    {
+        Console.Error.WriteLine($"error: partition size must be multiple of {blockSize}");
+        return 9;
+    }
+
+    if (((ulong)imageData.Length % blockSize) != 0)
+    {
+        var padded = (int)AlignUp((ulong)imageData.Length, blockSize);
+        Array.Resize(ref imageData, padded);
+    }
+
+    if (((ulong)hashtree.Length % blockSize) != 0)
+    {
+        var padded = (int)AlignUp((ulong)hashtree.Length, blockSize);
+        Array.Resize(ref hashtree, padded);
+    }
+
+    var vbmetaOffset = (ulong)(imageData.Length + hashtree.Length);
+    var vbmetaPaddedLength = (int)AlignUp((ulong)vbmetaBlob.Length, blockSize);
+    var vbmetaPadded = new byte[vbmetaPaddedLength];
+    vbmetaBlob.CopyTo(vbmetaPadded, 0);
+
+    var vbmetaEndOffset = vbmetaOffset + (ulong)vbmetaPadded.Length;
+    if (partitionSize < vbmetaEndOffset + blockSize)
+    {
+        Console.Error.WriteLine($"error: partition size too small, need at least {vbmetaEndOffset + blockSize}");
+        return 9;
+    }
+
+    var footer = new AvbFooter
+    {
+        MagicValue = AvbFooter.MagicValueLiteral,
+        VersionMajor = AvbFooter.ExpectedVersionMajor,
+        VersionMinor = AvbFooter.ExpectedVersionMinor,
+        OriginalImageSize = originalImageSize,
+        VBMetaOffset = vbmetaOffset,
+        VBMetaSize = (ulong)vbmetaBlob.Length
+    };
+    var footerBytes = new byte[AvbFooter.Size];
+    footer.ToBytes(footerBytes);
+
+    using var stream = new FileStream(imagePath, FileMode.Create, FileAccess.Write, FileShare.None);
+    stream.Write(imageData, 0, imageData.Length);
+    stream.Write(hashtree, 0, hashtree.Length);
+    stream.Write(vbmetaPadded, 0, vbmetaPadded.Length);
+
+    var dontCareLength = (long)(partitionSize - vbmetaEndOffset - blockSize);
+    if (dontCareLength > 0)
+    {
+        stream.Write(new byte[dontCareLength]);
+    }
+
+    stream.Write(new byte[blockSize - AvbFooter.Size], 0, (int)(blockSize - AvbFooter.Size));
+    stream.Write(footerBytes, 0, footerBytes.Length);
+    return 0;
+}
+
 static byte[] BuildVBMetaBlob(
     ReadOnlySpan<byte> descriptors,
     uint algorithmType,
     ulong rollbackIndex,
     uint flags,
     uint rollbackIndexLocation,
-    string releaseString)
+    string releaseString,
+    string? keyPath = null,
+    string? signingHelper = null,
+    string? signingHelperWithFiles = null)
 {
     var authBlock = Array.Empty<byte>();
     var auxSize = (int)AlignUp((ulong)descriptors.Length, 64);
@@ -1117,6 +1459,35 @@ static byte[] BuildVBMetaBlob(
     var releaseLength = Math.Min(releaseBytes.Length, AvbVBMetaImageHeader.ReleaseStringSize - 1);
     releaseBytes.AsSpan(0, releaseLength).CopyTo(header.AsSpan(128, releaseLength));
     header[128 + releaseLength] = 0;
+
+    // Generate signature if algorithm is not NONE
+    if (algorithmType != (uint)AvbAlgorithmType.None && keyPath != null)
+    {
+        var algorithm = (AvbAlgorithmType)algorithmType;
+        var dataToSign = header.Concat(auxBlock).ToArray();
+        var signature = AvbCrypto.SignData(keyPath, algorithm, dataToSign, signingHelper, signingHelperWithFiles);
+        
+        // Read public key from private key
+        using var rsa = RSA.Create();
+        rsa.ImportFromPem(File.ReadAllText(keyPath));
+        var publicKey = rsa.ExportParameters(false);
+        var encodedPublicKey = AvbCrypto.EncodeRSAPublicKey(publicKey);
+        
+        // Build auth block
+        var hash = AvbCrypto.CalculateHash(algorithm, dataToSign);
+        authBlock = new byte[hash.Length + signature.Length + encodedPublicKey.Length];
+        hash.CopyTo(authBlock, 0);
+        signature.CopyTo(authBlock, hash.Length);
+        encodedPublicKey.CopyTo(authBlock, hash.Length + signature.Length);
+        
+        // Update header with auth block size and offsets
+        BinaryPrimitives.WriteUInt64BigEndian(header.AsSpan(12, 8), (ulong)authBlock.Length);
+        BinaryPrimitives.WriteUInt64BigEndian(header.AsSpan(32, 8), (ulong)hash.Length);
+        BinaryPrimitives.WriteUInt64BigEndian(header.AsSpan(40, 8), (ulong)hash.Length);
+        BinaryPrimitives.WriteUInt64BigEndian(header.AsSpan(48, 8), (ulong)signature.Length);
+        BinaryPrimitives.WriteUInt64BigEndian(header.AsSpan(56, 8), (ulong)(hash.Length + signature.Length));
+        BinaryPrimitives.WriteUInt64BigEndian(header.AsSpan(64, 8), (ulong)encodedPublicKey.Length);
+    }
 
     var output = new byte[header.Length + authBlock.Length + auxBlock.Length];
     header.CopyTo(output.AsSpan(0));

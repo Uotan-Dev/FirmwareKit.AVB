@@ -1,5 +1,8 @@
 using System.Buffers.Binary;
 using System.Text;
+using FirmwareKit.AVB.Descriptors;
+using FirmwareKit.AVB.Enums;
+using FirmwareKit.AVB.VBMeta;
 
 namespace FirmwareKit.AVB.Tests;
 
@@ -143,5 +146,356 @@ public class AvbDescriptorTests
         var pd = (AvbPropertyDescriptor)descriptor;
         Assert.Equal(key, pd.Key);
         Assert.Equal(val, pd.Value);
+    }
+
+    [Fact]
+    public void PropertyLookup_ShouldFindStringAndIntegerValues()
+    {
+        var headerSize = AvbVBMetaImageHeader.Size;
+        var authSize = 64;
+        var auxSize = 128;
+        var totalSize = headerSize + authSize + auxSize;
+        var data = new byte[totalSize];
+
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(0, 4), 0x30425641);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(12, 8), (ulong)authSize);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(20, 8), (ulong)auxSize);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(96, 8), 0);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(104, 8), 48);
+
+        var auxOffset = headerSize + authSize;
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(auxOffset, 8), (ulong)AvbDescriptorTag.Property);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(auxOffset + 8, 8), 32);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(auxOffset + 16, 8), 4);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(auxOffset + 24, 8), 5);
+
+        Encoding.UTF8.GetBytes("test").CopyTo(data.AsSpan(auxOffset + 32));
+        data[auxOffset + 36] = 0;
+        Encoding.UTF8.GetBytes("12345").CopyTo(data.AsSpan(auxOffset + 37));
+        data[auxOffset + 42] = 0;
+
+        Assert.True(AvbDescriptor.TryLookupProperty(data, "test", out var stringValue));
+        Assert.Equal("12345", stringValue);
+        Assert.True(AvbDescriptor.TryLookupPropertyUInt64(data, "test", out var parsedValue));
+        Assert.Equal(12345UL, parsedValue);
+    }
+
+    [Fact]
+    public void KernelCmdlineDescriptor_BadTag_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 48UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), 0xf00dd00dUL);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(16, 4), 0);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(20, 4), 40);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void KernelCmdlineDescriptor_CmdlineOverflow_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 48UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), (ulong)AvbDescriptorTag.KernelCmdline);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(16, 4), 0);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(20, 4), 41);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void HashtreeDescriptor_BadTag_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 200UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), 0xf00dd00dUL);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void HashtreeDescriptor_PartitionNameOverflow_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 200UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), (ulong)AvbDescriptorTag.Hashtree);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+
+        var offset = 16;
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 88, 4), 30);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 92, 4), 10);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 96, 4), 10);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void HashtreeDescriptor_SaltOverflow_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 200UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), (ulong)AvbDescriptorTag.Hashtree);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+
+        var offset = 16;
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 88, 4), 10);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 92, 4), 30);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 96, 4), 10);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void HashtreeDescriptor_RootDigestOverflow_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 200UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), (ulong)AvbDescriptorTag.Hashtree);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+
+        var offset = 16;
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 88, 4), 10);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 92, 4), 10);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 96, 4), 30);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void HashDescriptor_BadTag_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 152UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), 0xf00dd00dUL);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void HashDescriptor_PartitionNameOverflow_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 152UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), (ulong)AvbDescriptorTag.Hash);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+
+        var offset = 16;
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 40, 4), 30);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 44, 4), 10);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 48, 4), 10);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void HashDescriptor_SaltOverflow_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 152UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), (ulong)AvbDescriptorTag.Hash);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+
+        var offset = 16;
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 40, 4), 10);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 44, 4), 30);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 48, 4), 10);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void HashDescriptor_DigestOverflow_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 152UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), (ulong)AvbDescriptorTag.Hash);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+
+        var offset = 16;
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 40, 4), 10);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 44, 4), 10);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 48, 4), 30);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void PropertyDescriptor_BadTag_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 32UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), 0xf00dd00dUL);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void PropertyDescriptor_KeyOverflow_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 32UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), (ulong)AvbDescriptorTag.Property);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+
+        var offset = 16;
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(offset, 8), 22);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(offset + 8, 8), 17);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void PropertyDescriptor_ValueOverflow_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 32UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), (ulong)AvbDescriptorTag.Property);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+
+        var offset = 16;
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(offset, 8), 16);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(offset + 8, 8), 23);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void ChainPartitionDescriptor_Parse_ShouldSucceed()
+    {
+        var partitionNameLen = 20u;
+        var publicKeyLen = 16u;
+        var numBytesFollowing = 76UL + partitionNameLen + publicKeyLen;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), (ulong)AvbDescriptorTag.ChainPartition);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+
+        var offset = 16;
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset, 4), 42);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 4, 4), partitionNameLen);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 8, 4), publicKeyLen);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 12, 4), 0);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+
+        Assert.IsType<AvbChainPartitionDescriptor>(descriptor);
+        var cpd = (AvbChainPartitionDescriptor)descriptor;
+        Assert.Equal(AvbDescriptorTag.ChainPartition, cpd.Tag);
+        Assert.Equal(42U, cpd.RollbackIndexLocation);
+        Assert.Equal((int)partitionNameLen, cpd.PartitionName.Length);
+        Assert.Equal((int)publicKeyLen, cpd.PublicKey.Length);
+    }
+
+    [Fact]
+    public void ChainPartitionDescriptor_BadTag_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 56UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), 0xf00dd00dUL);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void ChainPartitionDescriptor_ZeroRollbackIndexLocation_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 56UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), (ulong)AvbDescriptorTag.ChainPartition);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+
+        var offset = 16;
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset, 4), 0);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 4, 4), 16);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 8, 4), 17);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 12, 4), 0);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void ChainPartitionDescriptor_PartitionNameOverflow_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 56UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), (ulong)AvbDescriptorTag.ChainPartition);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+
+        var offset = 16;
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset, 4), 42);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 4, 4), 24);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 8, 4), 17);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 12, 4), 0);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void ChainPartitionDescriptor_PublicKeyOverflow_ShouldReturnUnknown()
+    {
+        var numBytesFollowing = 56UL;
+        var data = new byte[16 + numBytesFollowing];
+
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), (ulong)AvbDescriptorTag.ChainPartition);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), numBytesFollowing);
+
+        var offset = 16;
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset, 4), 42);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 4, 4), 16);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 8, 4), 25);
+        BinaryPrimitives.WriteUInt32BigEndian(data.AsSpan(offset + 12, 4), 0);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
+    }
+
+    [Fact]
+    public void Descriptor_NumBytesFollowingNotMultipleOf8_ShouldReturnUnknown()
+    {
+        var data = new byte[24];
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(0, 8), (ulong)AvbDescriptorTag.Hash);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(8, 8), 7);
+
+        var descriptor = AvbDescriptor.FromBytes(data);
+        Assert.IsType<UnknownAvbDescriptor>(descriptor);
     }
 }

@@ -1,12 +1,19 @@
-namespace FirmwareKit.AVB;
+using FirmwareKit.AVB.Ab;
+using FirmwareKit.AVB.Enums;
+
+namespace FirmwareKit.AVB.Abstractions;
 
 /// <summary>
 /// Convenience managed base class for implementing <see cref="IAvbOps"/>.
+/// <para>实现<see cref="IAvbOps"/>的便捷托管基类。</para>
 /// </summary>
 /// <remarks>
-/// This class provides sane defaults for non-platform-specific operations
+/// This class provides sane defaults for non-platform-specific operations.
+/// <para>此类为非平台特定操作提供合理的默认值。</para>
 /// (rollback storage, persistent values, A/B metadata helpers, and key trust policy).
+/// <para>（回滚存储、持久值、A/B元数据助手和密钥信任策略）。</para>
 /// Override members as needed for production integration.
+/// <para>根据生产集成的需要重写成员。</para>
 /// </remarks>
 public abstract class AvbOpsBase : IAvbOps
 {

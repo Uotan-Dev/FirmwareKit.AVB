@@ -1,3 +1,4 @@
+using FirmwareKit.AVB.Core;
 using System.Buffers.Binary;
 
 namespace FirmwareKit.AVB.Tests;

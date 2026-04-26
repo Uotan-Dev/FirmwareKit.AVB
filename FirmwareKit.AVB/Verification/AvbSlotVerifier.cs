@@ -1,26 +1,27 @@
+using FirmwareKit.AVB.Abstractions;
+using FirmwareKit.AVB.Core;
+using FirmwareKit.AVB.Descriptors;
+using FirmwareKit.AVB.Enums;
+using FirmwareKit.AVB.Security;
+using FirmwareKit.AVB.Utilities;
+using FirmwareKit.AVB.VBMeta;
 using System.Security.Cryptography;
 
-namespace FirmwareKit.AVB;
+namespace FirmwareKit.AVB.Verification;
 /// <summary>
 /// Contains data from a loaded and verified VBMeta image.
 /// Equivalent to 'AvbVBMetaData' in libavb.
+/// <para>包含来自已加载和验证的VBMeta镜像的数据。</para>
+/// <para>等价于libavb中的'AvbVBMetaData'。</para>
 /// </summary>
-/// <param name="PartitionName">The name of the partition the VBMeta image was loaded from.</param>
-/// <param name="VbMetaBytes">The raw bytes of the VBMeta image.</param>
-/// <param name="VerifyResult">The result of verifying the VBMeta image.</param>
 public record AvbVBMetaData(string PartitionName, byte[] VbMetaBytes, AvbVBMetaVerifyResult VerifyResult);
 
 /// <summary>
 /// Contains data from a loaded and verified partition.
 /// Equivalent to 'AvbPartitionData' in libavb.
+/// <para>包含来自已加载和验证的分区的数据。</para>
+/// <para>等价于libavb中的'AvbPartitionData'。</para>
 /// </summary>
-/// <param name="PartitionName">The name of the partition.</param>
-/// <param name="Data">The loaded partition data (if requested and successful).</param>
-/// <param name="DataSize">The size of the data in bytes.</param>
-/// <param name="Preloaded">Whether the data was preloaded.</param>
-/// <param name="VerifyResult">The result of verifying the partition.</param>
-/// <param name="Digest">The calculated digest of the partition data.</param>
-/// <param name="DigestType">The algorithm used to calculate the digest.</param>
 public record AvbPartitionData(
     string PartitionName,
     byte[] Data,
@@ -33,46 +34,83 @@ public record AvbPartitionData(
 /// <summary>
 /// High-level data structure returned by <see cref="AvbSlotVerifier.VerifySlot"/>.
 /// Equivalent to 'AvbSlotVerifyData' in libavb.
+/// <para><see cref="AvbSlotVerifier.VerifySlot"/>返回的高级数据结构。</para>
+/// <para>等价于libavb中的'AvbSlotVerifyData'。</para>
 /// </summary>
 public class AvbSlotVerifyData
 {
-    /// <summary>Gets or sets the A/B suffix used for the slot (e.g., "_a" or "_b").</summary>
+    /// <summary>
+    /// Gets or sets the A/B suffix used for the slot (e.g., "_a" or "_b").
+    /// <para>获取或设置用于槽的A/B后缀（例如，"_a"或"_b"）。</para>
+    /// </summary>
     public string AbSuffix { get; set; } = string.Empty;
 
-    /// <summary>Gets the list of loaded VBMeta images.</summary>
+    /// <summary>
+    /// Gets the list of loaded VBMeta images.
+    /// <para>获取已加载的VBMeta镜像列表。</para>
+    /// </summary>
     public List<AvbVBMetaData> VbmetaImages { get; } = [];
 
-    /// <summary>Gets the list of loaded/verified partitions.</summary>
+    /// <summary>
+    /// Gets the list of loaded/verified partitions.
+    /// <para>获取已加载/验证的分区列表。</para>
+    /// </summary>
     public List<AvbPartitionData> LoadedPartitions { get; } = [];
 
-    /// <summary>Gets the additional command-line substitutions (e.g., for persistent digests).</summary>
+    /// <summary>
+    /// Gets the additional command-line substitutions (e.g., for persistent digests).
+    /// <para>获取额外的命令行替换（例如，用于持久摘要）。</para>
+    /// </summary>
     public Dictionary<string, string> AdditionalSubstitutions { get; } = [];
 
-    /// <summary>Gets or sets the generated kernel command-line fragment.</summary>
+    /// <summary>
+    /// Gets or sets the generated kernel command-line fragment.
+    /// <para>获取或设置生成的内核命令行片段。</para>
+    /// </summary>
     public string Cmdline { get; set; } = string.Empty;
 
-    /// <summary>Gets or sets the multi-partition VBMeta digest.</summary>
+    /// <summary>
+    /// Gets or sets the multi-partition VBMeta digest.
+    /// <para>获取或设置多分区VBMeta摘要。</para>
+    /// </summary>
     public byte[] VbmetaDigest { get; set; } = [];
 
-    /// <summary>Gets or sets the public key of the top-level VBMeta image.</summary>
+    /// <summary>
+    /// Gets or sets the public key of the top-level VBMeta image.
+    /// <para>获取或设置顶级VBMeta镜像的公钥。</para>
+    /// </summary>
     public byte[] ToplevelPublicKey { get; set; } = [];
 
-    /// <summary>Gets or sets the flags from the top-level VBMeta image header.</summary>
+    /// <summary>
+    /// Gets or sets the flags from the top-level VBMeta image header.
+    /// <para>获取或设置来自顶级VBMeta镜像头的标志。</para>
+    /// </summary>
     public uint ToplevelVBMetaFlags { get; set; }
 
-    /// <summary>Gets or sets the algorithm type used by the top-level VBMeta image.</summary>
+    /// <summary>
+    /// Gets or sets the algorithm type used by the top-level VBMeta image.
+    /// <para>获取或设置顶级VBMeta镜像使用的算法类型。</para>
+    /// </summary>
     public AvbAlgorithmType ToplevelAlgorithmType { get; set; }
 
-    /// <summary>Gets or sets the final hashtree error mode resolved for the kernel.</summary>
+    /// <summary>
+    /// Gets or sets the final hashtree error mode resolved for the kernel.
+    /// <para>获取或设置为内核解析的最终哈希树错误模式。</para>
+    /// </summary>
     public AvbHashtreeErrorMode ResolvedHashtreeErrorMode { get; set; }
 
-    /// <summary>Gets the rollback indexes for each of the 32 possible locations.</summary>
+    /// <summary>
+    /// Gets the rollback indexes for each of the 32 possible locations.
+    /// <para>获取32个可能位置中每个位置的回滚索引。</para>
+    /// </summary>
     public ulong[] RollbackIndexes { get; } = new ulong[32];
 }
 
 /// <summary>
 /// Provides high-level Android Verified Boot (AVB) slot verification logic.
 /// Equivalent to the 'avb_slot_verify.c' implementation in libavb.
+/// <para>提供高级Android Verified Boot (AVB)槽验证逻辑。</para>
+/// <para>等价于libavb中的'avb_slot_verify.c'实现。</para>
 /// </summary>
 public class AvbSlotVerifier
 {
@@ -84,8 +122,10 @@ public class AvbSlotVerifier
 
     /// <summary>
     /// Initializes a new instance of the <see cref="AvbSlotVerifier"/> class.
+    /// <para>初始化<see cref="AvbSlotVerifier"/>类的新实例。</para>
     /// </summary>
-    /// <param name="ops">The <see cref="IAvbOps"/> implementation for platform I/O.</param>
+    /// <param name="ops">The <see cref="IAvbOps"/> implementation for platform I/O.
+    /// <para>用于平台I/O的<see cref="IAvbOps"/>实现。</para></param>
     public AvbSlotVerifier(IAvbOps ops)
     {
         _ops = ops;
@@ -94,19 +134,29 @@ public class AvbSlotVerifier
     /// <summary>
     /// Converts slot verification result to a stable libavb-style string.
     /// Equivalent to 'avb_slot_verify_result_to_string()'.
+    /// <para>将槽验证结果转换为稳定的libavb风格字符串。</para>
+    /// <para>等价于'avb_slot_verify_result_to_string()'。</para>
     /// </summary>
     public static string ResultToString(AvbSlotVerifyResult result) => AvbResultStrings.ToLibAvbString(result);
 
     /// <summary>
     /// High-level function that loads and verifies partitions for a specific slot.
     /// Equivalent to 'avb_slot_verify()' in libavb.
+    /// <para>用于特定槽加载和验证分区的高级函数。</para>
+    /// <para>等价于libavb中的'avb_slot_verify()'。</para>
     /// </summary>
-    /// <param name="requestedPartitions">List of extra partitions to load and verify.</param>
-    /// <param name="abSuffix">The A/B suffix for the slot to verify (e.g., "_a" or "_b").</param>
-    /// <param name="flags">Verification flags.</param>
-    /// <param name="hashtreeErrorMode">The initial hashtree error mode.</param>
-    /// <param name="outData">The result of the verification, containing loaded partition data and VBMeta information.</param>
-    /// <returns>A value from <see cref="AvbSlotVerifyResult"/> indicating overall verification success.</returns>
+    /// <param name="requestedPartitions">List of extra partitions to load and verify.
+    /// <para>要加载和验证的额外分区列表。</para></param>
+    /// <param name="abSuffix">The A/B suffix for the slot to verify (e.g., "_a" or "_b").
+    /// <para>要验证的槽的A/B后缀（例如"_a"或"_b"）。</para></param>
+    /// <param name="flags">Verification flags.
+    /// <para>验证标志。</para></param>
+    /// <param name="hashtreeErrorMode">The initial hashtree error mode.
+    /// <para>初始哈希树错误模式。</para></param>
+    /// <param name="outData">The result of the verification, containing loaded partition data and VBMeta information.
+    /// <para>验证结果，包含已加载的分区数据和VBMeta信息。</para></param>
+    /// <returns>A value from <see cref="AvbSlotVerifyResult"/> indicating overall verification success.
+    /// <para>来自<see cref="AvbSlotVerifyResult"/>的值，指示整体验证是否成功。</para></returns>
     public AvbSlotVerifyResult VerifySlot(
         string[]? requestedPartitions,
         string abSuffix,
@@ -218,11 +268,17 @@ public class AvbSlotVerifier
     /// <summary>
     /// Manages the hashtree error mode for and from persistent storage.
     /// Equivalent to 'avb_manage_hashtree_error_mode()' in libavb.
+    /// <para>管理和持久化存储的哈希树错误模式。</para>
+    /// <para>等价于libavb中的'avb_manage_hashtree_error_mode()'。</para>
     /// </summary>
-    /// <param name="flags">The verification flags.</param>
-    /// <param name="data">The verification data.</param>
-    /// <param name="outMode">The resolved hashtree error mode.</param>
-    /// <returns>The result of the I/O operation.</returns>
+    /// <param name="flags">The verification flags.
+    /// <para>验证标志。</para></param>
+    /// <param name="data">The verification data.
+    /// <para>验证数据。</para></param>
+    /// <param name="outMode">The resolved hashtree error mode.
+    /// <para>解析的哈希树错误模式。</para></param>
+    /// <returns>The result of the I/O operation.
+    /// <para>I/O操作的结果。</para></returns>
     private AvbIOResult ManageHashtreeErrorMode(
         AvbSlotVerifyFlags flags,
         AvbSlotVerifyData data,
@@ -273,9 +329,13 @@ public class AvbSlotVerifier
     /// <summary>
     /// Determines whether a verification error is considered recoverable.
     /// Equivalent to 'is_recoverable()' in libavb.
+    /// <para>确定验证错误是否被视为可恢复的。</para>
+    /// <para>等价于libavb中的'is_recoverable()'。</para>
     /// </summary>
-    /// <param name="result">The verification result to check.</param>
-    /// <returns>True if the error is recoverable, false otherwise.</returns>
+    /// <param name="result">The verification result to check.
+    /// <para>要检查的验证结果。</para></param>
+    /// <returns>True if the error is recoverable, false otherwise.
+    /// <para>如果错误可恢复则返回true，否则返回false。</para></returns>
     private bool IsRecoverable(AvbSlotVerifyResult result) => result switch
     {
         AvbSlotVerifyResult.Ok => true,
@@ -293,19 +353,33 @@ public class AvbSlotVerifier
     /// <summary>
     /// Loads and verifies a VBMeta image from a partition.
     /// Equivalent to 'load_and_verify_vbmeta()' in libavb.
+    /// <para>从分区加载并验证VBMeta镜像。</para>
+    /// <para>等价于libavb中的'load_and_verify_vbmeta()'。</para>
     /// </summary>
-    /// <param name="partitionName">The name of the partition to load from.</param>
-    /// <param name="abSuffix">The A/B suffix for the slot.</param>
-    /// <param name="flags">Verification flags.</param>
-    /// <param name="allowVerificationError">Whether to continue on recoverable errors.</param>
-    /// <param name="toplevelVBMetaFlags">The flags from the top-level VBMeta image.</param>
-    /// <param name="rollbackIndexLocation">The rollback index location for this metadata.</param>
-    /// <param name="expectedPublicKey">The expected public key (for chained partitions).</param>
-    /// <param name="requestedPartitions">List of partitions requested for loading.</param>
-    /// <param name="slotData">The verification data object.</param>
-    /// <param name="algorithmType">Outputs the algorithm type used by the VBMeta image.</param>
-    /// <param name="useAbSuffix">Whether to append the A/B suffix to the partition name.</param>
-    /// <returns>The result of the loader operation.</returns>
+    /// <param name="partitionName">The name of the partition to load from.
+    /// <para>要加载的分区名称。</para></param>
+    /// <param name="abSuffix">The A/B suffix for the slot.
+    /// <para>槽的A/B后缀。</para></param>
+    /// <param name="flags">Verification flags.
+    /// <para>验证标志。</para></param>
+    /// <param name="allowVerificationError">Whether to continue on recoverable errors.
+    /// <para>是否在可恢复错误时继续。</para></param>
+    /// <param name="toplevelVBMetaFlags">The flags from the top-level VBMeta image.
+    /// <para>来自顶级VBMeta镜像的标志。</para></param>
+    /// <param name="rollbackIndexLocation">The rollback index location for this metadata.
+    /// <para>此元数据的回滚索引位置。</para></param>
+    /// <param name="expectedPublicKey">The expected public key (for chained partitions).
+    /// <para>预期的公钥（用于链式分区）。</para></param>
+    /// <param name="requestedPartitions">List of partitions requested for loading.
+    /// <para>请求加载的分区列表。</para></param>
+    /// <param name="slotData">The verification data object.
+    /// <para>验证数据对象。</para></param>
+    /// <param name="algorithmType">Outputs the algorithm type used by the VBMeta image.
+    /// <para>输出VBMeta镜像使用的算法类型。</para></param>
+    /// <param name="useAbSuffix">Whether to append the A/B suffix to the partition name.
+    /// <para>是否将A/B后缀附加到分区名称。</para></param>
+    /// <returns>The result of the loader operation.
+    /// <para>加载器操作的结果。</para></returns>
     private AvbSlotVerifyResult LoadAndVerifyVBMeta(
         string partitionName,
         string abSuffix,
@@ -347,18 +421,29 @@ public class AvbSlotVerifier
         {
             var footerBytes = new byte[AvbFooter.Size];
             var ioRetFooter = _ops.ReadFromPartition(fullPartitionName, size - AvbFooter.Size, AvbFooter.Size, footerBytes, out _);
-            if (ioRetFooter == AvbIOResult.Ok)
+            if (ioRetFooter == AvbIOResult.ErrorOom)
             {
-                var footer = AvbFooter.FromBytes(footerBytes);
-                if (footer.IsValid)
-                {
-                    vbmetaOffset = (long)footer.VBMetaOffset;
-                    vbmetaSize = (int)footer.VBMetaSize;
+                return AvbSlotVerifyResult.ErrorOom;
+            }
+            else if (ioRetFooter != AvbIOResult.Ok)
+            {
+                return AvbSlotVerifyResult.ErrorIo;
+            }
 
-                    if (vbmetaOffset < 0 || vbmetaSize < 0 || (vbmetaOffset + vbmetaSize) > size)
-                    {
-                        return AvbSlotVerifyResult.ErrorInvalidMetadata;
-                    }
+            var footer = AvbFooter.FromBytes(footerBytes);
+            if (footer.IsValid)
+            {
+                if (footer.VBMetaSize > 65536)
+                {
+                    return AvbSlotVerifyResult.ErrorInvalidMetadata;
+                }
+
+                vbmetaOffset = (long)footer.VBMetaOffset;
+                vbmetaSize = (int)footer.VBMetaSize;
+
+                if (vbmetaOffset < 0 || vbmetaSize < 0 || (vbmetaOffset + vbmetaSize) > size)
+                {
+                    return AvbSlotVerifyResult.ErrorInvalidMetadata;
                 }
             }
         }
@@ -371,11 +456,15 @@ public class AvbSlotVerifier
         if (vbmetaOffset == 0 && _ops.GetPreloadedPartition(fullPartitionName, vbmetaSize, out var preloaded) == AvbIOResult.Ok)
         {
             vbmetaBytes = preloaded.ToArray();
+            if (vbmetaBytes.Length != vbmetaSize)
+            {
+                return AvbSlotVerifyResult.ErrorIo;
+            }
         }
         else
         {
             vbmetaBytes = new byte[vbmetaSize];
-            if (_ops.ReadFromPartition(fullPartitionName, vbmetaOffset, vbmetaSize, vbmetaBytes, out var read) != AvbIOResult.Ok)
+            if (_ops.ReadFromPartition(fullPartitionName, vbmetaOffset, vbmetaSize, vbmetaBytes, out var read) != AvbIOResult.Ok || read != vbmetaSize)
             {
                 return AvbSlotVerifyResult.ErrorIo;
             }
@@ -403,11 +492,14 @@ public class AvbSlotVerifier
             }
         }
 
-        if (slotData.VbmetaImages.Count == 0)
+        if (isMainVbmeta)
         {
             slotData.ToplevelVBMetaFlags = image.Header.Flags;
             slotData.ToplevelAlgorithmType = (AvbAlgorithmType)image.Header.AlgorithmType;
-            slotData.ToplevelPublicKey = image.AuxiliaryData.Span.Slice((int)image.Header.PublicKeyOffset, (int)image.Header.PublicKeySize).ToArray();
+            if (verifyResult == AvbVBMetaVerifyResult.Ok)
+            {
+                slotData.ToplevelPublicKey = image.AuxiliaryData.Span.Slice((int)image.Header.PublicKeyOffset, (int)image.Header.PublicKeySize).ToArray();
+            }
             toplevelVBMetaFlags = image.Header.Flags;
         }
         else
@@ -418,46 +510,65 @@ public class AvbSlotVerifier
             }
         }
 
-        if ((image.Header.Flags & (uint)AvbVBMetaImageFlags.VerificationDisabled) != 0)
-        {
-            slotData.VbmetaImages.Add(new AvbVBMetaData(partitionName, vbmetaBytes.AsSpan(0, (int)actualVbmetaSize).ToArray(), verifyResult));
-            return LoadRequestedPartitions(requestedPartitions, abSuffix, slotData);
-        }
-
         var isTrusted = false;
         var rollbackLocationToUse = rollbackIndexLocation;
 
-        if (expectedPublicKey != null)
+        if (verifyResult == AvbVBMetaVerifyResult.Ok)
         {
-            var pubkey = image.AuxiliaryData.Span.Slice((int)image.Header.PublicKeyOffset, (int)image.Header.PublicKeySize);
-            if (AvbUtil.SafeMemCmp(pubkey, expectedPublicKey) != 0)
+            if (expectedPublicKey != null)
             {
-                return AvbSlotVerifyResult.ErrorPublicKeyRejected;
-            }
-
-            isTrusted = true;
-        }
-        else
-        {
-            var pubkey = image.AuxiliaryData.Span.Slice((int)image.Header.PublicKeyOffset, (int)image.Header.PublicKeySize);
-            var metadata = image.AuxiliaryData.Span.Slice((int)image.Header.PublicKeyMetadataOffset, (int)image.Header.PublicKeyMetadataSize);
-
-            if ((flags & AvbSlotVerifyFlags.NoVbmetaPartition) != 0)
-            {
-                _ops.ValidatePublicKeyForPartition(partitionName, pubkey, metadata, out isTrusted, out rollbackLocationToUse);
+                var pubkey = image.AuxiliaryData.Span.Slice((int)image.Header.PublicKeyOffset, (int)image.Header.PublicKeySize);
+                if (AvbUtil.SafeMemCmp(pubkey, expectedPublicKey) != 0)
+                {
+                    ret = AvbSlotVerifyResult.ErrorPublicKeyRejected;
+                    if (!AllowErrorAndContinue(AvbSlotVerifyResult.ErrorPublicKeyRejected, allowVerificationError))
+                    {
+                        return AvbSlotVerifyResult.ErrorPublicKeyRejected;
+                    }
+                }
+                else
+                {
+                    isTrusted = true;
+                }
             }
             else
             {
-                _ops.ValidateVBMetaPublicKey(pubkey, metadata, out isTrusted);
-            }
-        }
+                var pubkey = image.AuxiliaryData.Span.Slice((int)image.Header.PublicKeyOffset, (int)image.Header.PublicKeySize);
+                var metadata = image.AuxiliaryData.Span.Slice((int)image.Header.PublicKeyMetadataOffset, (int)image.Header.PublicKeyMetadataSize);
 
-        if (!isTrusted)
-        {
-            ret = AvbSlotVerifyResult.ErrorPublicKeyRejected;
-            if (!AllowErrorAndContinue(AvbSlotVerifyResult.ErrorPublicKeyRejected, allowVerificationError))
+                if ((flags & AvbSlotVerifyFlags.NoVbmetaPartition) != 0)
+                {
+                    var pkIoRet = _ops.ValidatePublicKeyForPartition(partitionName, pubkey, metadata, out isTrusted, out rollbackLocationToUse);
+                    if (pkIoRet == AvbIOResult.ErrorOom)
+                    {
+                        return AvbSlotVerifyResult.ErrorOom;
+                    }
+                    else if (pkIoRet != AvbIOResult.Ok)
+                    {
+                        return AvbSlotVerifyResult.ErrorIo;
+                    }
+                }
+                else
+                {
+                    var pkIoRet = _ops.ValidateVBMetaPublicKey(pubkey, metadata, out isTrusted);
+                    if (pkIoRet == AvbIOResult.ErrorOom)
+                    {
+                        return AvbSlotVerifyResult.ErrorOom;
+                    }
+                    else if (pkIoRet != AvbIOResult.Ok)
+                    {
+                        return AvbSlotVerifyResult.ErrorIo;
+                    }
+                }
+            }
+
+            if (!isTrusted)
             {
-                return AvbSlotVerifyResult.ErrorPublicKeyRejected;
+                ret = AvbSlotVerifyResult.ErrorPublicKeyRejected;
+                if (!AllowErrorAndContinue(AvbSlotVerifyResult.ErrorPublicKeyRejected, allowVerificationError))
+                {
+                    return AvbSlotVerifyResult.ErrorPublicKeyRejected;
+                }
             }
         }
 
@@ -509,6 +620,16 @@ public class AvbSlotVerifier
         slotData.VbmetaImages.Add(new AvbVBMetaData(partitionName, vbmetaBytes, verifyResult));
         algorithmType = (AvbAlgorithmType)image.Header.AlgorithmType;
 
+        if ((image.Header.Flags & (uint)AvbVBMetaImageFlags.VerificationDisabled) != 0)
+        {
+            var subRet = LoadRequestedPartitions(requestedPartitions, abSuffix, slotData);
+            if (subRet != AvbSlotVerifyResult.Ok)
+            {
+                ret = subRet;
+            }
+            return ret;
+        }
+
         foreach (var desc in image.GetDescriptors())
         {
             if (desc is AvbHashDescriptor hash)
@@ -535,6 +656,11 @@ public class AvbSlotVerifier
             else if (desc is AvbChainPartitionDescriptor chain)
             {
                 if (!isMainVbmeta)
+                {
+                    return AvbSlotVerifyResult.ErrorInvalidMetadata;
+                }
+
+                if (chain.RollbackIndexLocation == 0)
                 {
                     return AvbSlotVerifyResult.ErrorInvalidMetadata;
                 }
@@ -566,7 +692,11 @@ public class AvbSlotVerifier
                         return AvbSlotVerifyResult.ErrorInvalidMetadata;
                     }
 
-                    var digestLen = AvbCrypto.GetDigestSize(hashtree.HashAlgorithm);
+                    if (!AvbCrypto.TryGetDigestSize(hashtree.HashAlgorithm, out var digestLen))
+                    {
+                        return AvbSlotVerifyResult.ErrorInvalidMetadata;
+                    }
+
                     var subRet = LoadAndVerifyPersistentDigest(hashtree.PartitionName, abSuffix, (hashtree.Flags & AvbHashtreeDescriptorFlags.DoNotUseAb) == 0, digestLen, [], out rootDigest);
                     if (subRet != AvbSlotVerifyResult.Ok)
                     {
@@ -609,14 +739,23 @@ public class AvbSlotVerifier
     /// <summary>
     /// Loads and verifies a persistent digest for a partition.
     /// Equivalent to 'load_and_verify_persistent_digest()' in libavb.
+    /// <para>加载并验证分区的持久化摘要。</para>
+    /// <para>等价于libavb中的'load_and_verify_persistent_digest()'。</para>
     /// </summary>
-    /// <param name="partitionName">The name of the partition.</param>
-    /// <param name="abSuffix">The A/B suffix for the slot.</param>
-    /// <param name="useAbSuffix">Whether to use the A/B suffix.</param>
-    /// <param name="digestLen">The expected length of the digest.</param>
-    /// <param name="initialDigest">Initial digest to write if not present.</param>
-    /// <param name="digest">Outputs the loaded/initialized digest.</param>
-    /// <returns>The result of the loader operation.</returns>
+    /// <param name="partitionName">The name of the partition.
+    /// <para>分区名称。</para></param>
+    /// <param name="abSuffix">The A/B suffix for the slot.
+    /// <para>槽的A/B后缀。</para></param>
+    /// <param name="useAbSuffix">Whether to use the A/B suffix.
+    /// <para>是否使用A/B后缀。</para></param>
+    /// <param name="digestLen">The expected length of the digest.
+    /// <para>摘要的预期长度。</para></param>
+    /// <param name="initialDigest">Initial digest to write if not present.
+    /// <para>如果不存在则写入的初始摘要。</para></param>
+    /// <param name="digest">Outputs the loaded/initialized digest.
+    /// <para>输出已加载/初始化的摘要。</para></param>
+    /// <returns>The result of the loader operation.
+    /// <para>加载器操作的结果。</para></returns>
     private AvbSlotVerifyResult LoadAndVerifyPersistentDigest(
         string partitionName,
         string abSuffix,
@@ -669,10 +808,15 @@ public class AvbSlotVerifier
     /// <summary>
     /// Calculates the aggregate VBMeta digest across all loaded VBMeta images.
     /// Equivalent to 'calculate_vbmeta_digest()' in libavb.
+    /// <para>计算所有已加载VBMeta镜像的聚合VBMeta摘要。</para>
+    /// <para>等价于libavb中的'calculate_vbmeta_digest()'。</para>
     /// </summary>
-    /// <param name="data">The verification data containing the loaded VBMeta images.</param>
-    /// <param name="digestType">The type of digest to calculate (SHA256 or SHA512).</param>
-    /// <returns>A byte array containing the calculated digest.</returns>
+    /// <param name="data">The verification data containing the loaded VBMeta images.
+    /// <para>包含已加载VBMeta镜像的验证数据。</para></param>
+    /// <param name="digestType">The type of digest to calculate (SHA256 or SHA512).
+    /// <para>要计算的摘要类型（SHA256或SHA512）。</para></param>
+    /// <returns>A byte array containing the calculated digest.
+    /// <para>包含计算摘要的字节数组。</para></returns>
     public static byte[] CalculateVBMetaDigest(AvbSlotVerifyData data, AvbDigestType digestType)
     {
         using var hash = digestType == AvbDigestType.Sha256
@@ -690,11 +834,17 @@ public class AvbSlotVerifier
     /// <summary>
     /// Loads any partitions that were explicitly requested.
     /// Equivalent to 'load_requested_partitions()' in libavb.
+    /// <para>加载任何明确请求的分区。</para>
+    /// <para>等价于libavb中的'load_requested_partitions()'。</para>
     /// </summary>
-    /// <param name="requestedPartitions">List of extra partitions requested for loading.</param>
-    /// <param name="abSuffix">The A/B suffix for the slot.</param>
-    /// <param name="slotData">The current verification data.</param>
-    /// <returns>The result of the loader operation.</returns>
+    /// <param name="requestedPartitions">List of extra partitions requested for loading.
+    /// <para>请求加载的额外分区列表。</para></param>
+    /// <param name="abSuffix">The A/B suffix for the slot.
+    /// <para>槽的A/B后缀。</para></param>
+    /// <param name="slotData">The current verification data.
+    /// <para>当前验证数据。</para></param>
+    /// <returns>The result of the loader operation.
+    /// <para>加载器操作的结果。</para></returns>
     private AvbSlotVerifyResult LoadRequestedPartitions(string[]? requestedPartitions, string abSuffix, AvbSlotVerifyData slotData)
     {
         if (requestedPartitions == null)
@@ -722,12 +872,19 @@ public class AvbSlotVerifier
     /// <summary>
     /// Loads the full content of a partition.
     /// Equivalent to 'load_full_partition()' in libavb.
+    /// <para>加载分区的完整内容。</para>
+    /// <para>等价于libavb中的'load_full_partition()'。</para>
     /// </summary>
-    /// <param name="partitionName">The name of the partition.</param>
-    /// <param name="abSuffix">The A/B suffix for the slot.</param>
-    /// <param name="slotData">The current verification data.</param>
-    /// <param name="data">Outputs the full partition content.</param>
-    /// <returns>The result of the loader operation.</returns>
+    /// <param name="partitionName">The name of the partition.
+    /// <para>分区名称。</para></param>
+    /// <param name="abSuffix">The A/B suffix for the slot.
+    /// <para>槽的A/B后缀。</para></param>
+    /// <param name="slotData">The current verification data.
+    /// <para>当前验证数据。</para></param>
+    /// <param name="data">Outputs the full partition content.
+    /// <para>输出完整分区内容。</para></param>
+    /// <returns>The result of the loader operation.
+    /// <para>加载器操作的结果。</para></returns>
     private AvbSlotVerifyResult LoadFullPartition(string partitionName, string abSuffix, AvbSlotVerifyData slotData, out byte[] data)
     {
         data = [];
@@ -754,11 +911,15 @@ public class AvbSlotVerifier
         {
             data = preloaded.ToArray();
             isPreloaded = true;
+            if (data.Length != size)
+            {
+                return AvbSlotVerifyResult.ErrorIo;
+            }
         }
         else
         {
             data = new byte[size];
-            if (_ops.ReadFromPartition(fullPartName, 0, (int)size, data, out _) != AvbIOResult.Ok)
+            if (_ops.ReadFromPartition(fullPartName, 0, (int)size, data, out var read) != AvbIOResult.Ok || read != size)
             {
                 return AvbSlotVerifyResult.ErrorIo;
             }
@@ -779,14 +940,23 @@ public class AvbSlotVerifier
     /// <summary>
     /// Loads and verifies a hash partition.
     /// Equivalent to 'load_and_verify_hash_partition()' in libavb.
+    /// <para>加载并验证哈希分区。</para>
+    /// <para>等价于libavb中的'load_and_verify_hash_partition()'。</para>
     /// </summary>
-    /// <param name="abSuffix">The A/B suffix for the slot.</param>
-    /// <param name="allowVerificationError">Whether to continue on recoverable errors.</param>
-    /// <param name="requestedPartitions">List of partitions requested for loading.</param>
-    /// <param name="hash">The hash descriptor to follow.</param>
-    /// <param name="slotData">The current verification data.</param>
-    /// <param name="outDigest">The computed hash of the partition.</param>
-    /// <returns>The result of the loader operation.</returns>
+    /// <param name="abSuffix">The A/B suffix for the slot.
+    /// <para>槽的A/B后缀。</para></param>
+    /// <param name="allowVerificationError">Whether to continue on recoverable errors.
+    /// <para>是否在可恢复错误时继续。</para></param>
+    /// <param name="requestedPartitions">List of partitions requested for loading.
+    /// <para>请求加载的分区列表。</para></param>
+    /// <param name="hash">The hash descriptor to follow.
+    /// <para>要遵循的哈希描述符。</para></param>
+    /// <param name="slotData">The current verification data.
+    /// <para>当前验证数据。</para></param>
+    /// <param name="outDigest">The computed hash of the partition.
+    /// <para>计算的分区哈希。</para></param>
+    /// <returns>The result of the loader operation.
+    /// <para>加载器操作的结果。</para></returns>
     private AvbSlotVerifyResult LoadAndVerifyHashPartition(
         string abSuffix,
         bool allowVerificationError,
@@ -825,24 +995,37 @@ public class AvbSlotVerifier
         {
             partData = preloaded.ToArray();
             isPreloaded = true;
+            if (partData.Length != imageSizeToLoad)
+            {
+                return AvbSlotVerifyResult.ErrorIo;
+            }
         }
         else
         {
             partData = new byte[imageSizeToLoad];
-            if (_ops.ReadFromPartition(partName, 0, (int)imageSizeToLoad, partData, out _) != AvbIOResult.Ok)
+            if (_ops.ReadFromPartition(partName, 0, (int)imageSizeToLoad, partData, out var read) != AvbIOResult.Ok || read != imageSizeToLoad)
             {
                 return AvbSlotVerifyResult.ErrorIo;
             }
         }
 
         var lengthToHash = Math.Min((long)hash.ImageSize, imageSizeToLoad);
-        var calculatedHash = AvbCrypto.CalculateHash(hash.HashAlgorithm, hash.Salt, partData.AsSpan(0, (int)lengthToHash));
+        byte[] calculatedHash;
+        try
+        {
+            calculatedHash = AvbCrypto.CalculateHash(hash.HashAlgorithm, hash.Salt, partData.AsSpan(0, (int)lengthToHash));
+        }
+        catch (NotSupportedException)
+        {
+            return AvbSlotVerifyResult.ErrorInvalidMetadata;
+        }
+
         outDigest = calculatedHash;
 
         byte[]? expectedDigest = null;
         if (hash.Digest.Length == 0)
         {
-            if (!string.IsNullOrEmpty(abSuffix))
+            if ((hash.Flags & AvbHashDescriptorFlags.DoNotUseAb) == 0 && !string.IsNullOrEmpty(abSuffix))
             {
                 return AvbSlotVerifyResult.ErrorInvalidMetadata;
             }
@@ -892,9 +1075,14 @@ public class AvbSlotVerifier
     /// <summary>
     /// Checks whether to allow an error and continue.
     /// Equivalent to 'allow_error_and_continue()' in libavb.
+    /// <para>检查是否允许错误并继续。</para>
+    /// <para>等价于libavb中的'allow_error_and_continue()'。</para>
     /// </summary>
-    /// <param name="res">The verification result to check.</param>
-    /// <param name="allow">Whether the caller allows errors.</param>
-    /// <returns>True if the error is recoverable and allowed, false otherwise.</returns>
+    /// <param name="res">The verification result to check.
+    /// <para>要检查的验证结果。</para></param>
+    /// <param name="allow">Whether the caller allows errors.
+    /// <para>调用者是否允许错误。</para></param>
+    /// <returns>True if the error is recoverable and allowed, false otherwise.
+    /// <para>如果错误可恢复且被允许则返回true，否则返回false。</para></returns>
     private bool AllowErrorAndContinue(AvbSlotVerifyResult res, bool allow) => allow && IsRecoverable(res);
 }

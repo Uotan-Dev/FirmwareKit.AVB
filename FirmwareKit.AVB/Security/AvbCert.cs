@@ -1,87 +1,136 @@
+using FirmwareKit.AVB.Abstractions;
+using FirmwareKit.AVB.Enums;
+using FirmwareKit.AVB.Utilities;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 
-namespace FirmwareKit.AVB;
+namespace FirmwareKit.AVB.Security;
 
 /// <summary>
 /// Constants used by libavb_cert compatible flows.
+/// <para>libavb_cert兼容流程使用的常量。</para>
 /// </summary>
 public static class AvbCertConstants
 {
-    /// <summary>Rollback index location for Product Intermediate Key (PIK) version.</summary>
+    /// <summary>
+    /// Rollback index location for Product Intermediate Key (PIK) version.
+    /// <para>产品中间密钥（PIK）版本的回滚索引位置。</para>
+    /// </summary>
     public const int PikVersionLocation = 0x1000;
 
-    /// <summary>Rollback index location for Product Signing/Unlock Key (PSK/PUK) version.</summary>
+    /// <summary>
+    /// Rollback index location for Product Signing/Unlock Key (PSK/PUK) version.
+    /// <para>产品签名/解锁密钥（PSK/PUK）版本的回滚索引位置。</para>
+    /// </summary>
     public const int PskVersionLocation = 0x1001;
 
-    /// <summary>Size in bytes of product ID.</summary>
+    /// <summary>
+    /// Size in bytes of product ID.
+    /// <para>产品ID的字节大小。</para>
+    /// </summary>
     public const int ProductIdSize = 16;
 
-    /// <summary>Size in bytes of unlock challenge.</summary>
+    /// <summary>
+    /// Size in bytes of unlock challenge.
+    /// <para>解锁挑战的字节大小。</para>
+    /// </summary>
     public const int UnlockChallengeSize = 16;
 
-    /// <summary>Size in bytes of AVB serialized RSA4096 public key.</summary>
+    /// <summary>
+    /// Size in bytes of AVB serialized RSA4096 public key.
+    /// <para>AVB序列化RSA4096公钥的字节大小。</para>
+    /// </summary>
     public const int PublicKeySize = 8 + 1024;
 
-    /// <summary>Size in bytes of SHA-256 digest.</summary>
+    /// <summary>
+    /// Size in bytes of SHA-256 digest.
+    /// <para>SHA-256摘要的字节大小。</para>
+    /// </summary>
     public const int Digest256Size = 32;
 
-    /// <summary>Size in bytes of SHA-512 digest.</summary>
+    /// <summary>
+    /// Size in bytes of SHA-512 digest.
+    /// <para>SHA-512摘要的字节大小。</para>
+    /// </summary>
     public const int Digest512Size = 64;
-    /// <summary>Size in bytes of RSA-4096 PKCS#1 v1.5 signature.</summary>
+
+    /// <summary>
+    /// Size in bytes of RSA-4096 PKCS#1 v1.5 signature.
+    /// <para>RSA-4096 PKCS#1 v1.5签名的字节大小。</para>
+    /// </summary>
     public const int Rsa4096SignatureSize = 512;
 }
 
 /// <summary>
 /// Certificate-related platform operations for managed AVB cert validation.
+/// <para>用于托管AVB证书验证的证书相关平台操作。</para>
 /// </summary>
 public interface IAvbCertOps
 {
     /// <summary>
     /// Gets the AVB platform ops used for rollback index access.
+    /// <para>获取用于回滚索引访问的AVB平台操作。</para>
     /// </summary>
     IAvbOps Ops { get; }
 
     /// <summary>
     /// Reads permanent attributes.
+    /// <para>读取永久属性。</para>
     /// </summary>
     AvbIOResult ReadPermanentAttributes(out AvbCertPermanentAttributes attributes);
 
     /// <summary>
     /// Reads permanent attributes hash (SHA-256).
+    /// <para>读取永久属性哈希（SHA-256）。</para>
     /// </summary>
     AvbIOResult ReadPermanentAttributesHash(Span<byte> hash);
 
     /// <summary>
     /// Reports key version used during successful validation.
+    /// <para>报告成功验证期间使用的密钥版本。</para>
     /// </summary>
     void SetKeyVersion(int rollbackIndexLocation, ulong keyVersion);
 
     /// <summary>
     /// Fills output with cryptographically secure random bytes.
+    /// <para>用加密安全的随机字节填充输出。</para>
     /// </summary>
     AvbIOResult GetRandomBytes(Span<byte> output);
 }
 
 /// <summary>
 /// Data structure of libavb_cert permanent attributes.
+/// <para>libavb_cert永久属性的数据结构。</para>
 /// </summary>
 public sealed record AvbCertPermanentAttributes
 {
-    /// <summary>Current format version, expected to be 1.</summary>
+    /// <summary>
+    /// Current format version, expected to be 1.
+    /// <para>当前格式版本，期望为1。</para>
+    /// </summary>
     public uint Version { get; init; }
 
-    /// <summary>Product root public key (AVB serialized RSA4096 key).</summary>
+    /// <summary>
+    /// Product root public key (AVB serialized RSA4096 key).
+    /// <para>产品根公钥（AVB序列化的RSA4096密钥）。</para>
+    /// </summary>
     public byte[] ProductRootPublicKey { get; init; } = [];
 
-    /// <summary>Product ID.</summary>
+    /// <summary>
+    /// Product ID.
+    /// <para>产品ID。</para>
+    /// </summary>
     public byte[] ProductId { get; init; } = [];
 
-    /// <summary>Serialized size.</summary>
+    /// <summary>
+    /// Serialized size.
+    /// <para>序列化大小。</para>
+    /// </summary>
     public const int Size = 4 + AvbCertConstants.PublicKeySize + AvbCertConstants.ProductIdSize;
 
     /// <summary>
     /// Serializes the structure in libavb_cert binary layout.
+    /// <para>以libavb_cert二进制布局序列化结构。</para>
     /// </summary>
     public byte[] ToBytes()
     {
@@ -104,6 +153,7 @@ public sealed record AvbCertPermanentAttributes
 
     /// <summary>
     /// Parses permanent attributes from binary payload.
+    /// <para>从二进制有效载荷解析永久属性。</para>
     /// </summary>
     public static AvbCertPermanentAttributes FromBytes(ReadOnlySpan<byte> data)
     {
@@ -123,29 +173,49 @@ public sealed record AvbCertPermanentAttributes
 
 /// <summary>
 /// Data structure of signed fields in libavb_cert certificate.
+/// <para>libavb_cert证书中签名字段的数据结构。</para>
 /// </summary>
 public sealed record AvbCertCertificateSignedData
 {
-    /// <summary>Current format version, expected to be 1.</summary>
+    /// <summary>
+    /// Current format version, expected to be 1.
+    /// <para>当前格式版本，期望为1。</para>
+    /// </summary>
     public uint Version { get; init; }
 
-    /// <summary>Certified public key (AVB serialized RSA4096 key).</summary>
+    /// <summary>
+    /// Certified public key (AVB serialized RSA4096 key).
+    /// <para>认证的公钥（AVB序列化的RSA4096密钥）。</para>
+    /// </summary>
     public byte[] PublicKey { get; init; } = [];
 
-    /// <summary>Subject field (SHA-256 digest).</summary>
+    /// <summary>
+    /// Subject field (SHA-256 digest).
+    /// <para>主题字段（SHA-256摘要）。</para>
+    /// </summary>
     public byte[] Subject { get; init; } = [];
 
-    /// <summary>Usage field (SHA-256 digest of usage string).</summary>
+    /// <summary>
+    /// Usage field (SHA-256 digest of usage string).
+    /// <para>使用字段（使用字符串的SHA-256摘要）。</para>
+    /// </summary>
     public byte[] Usage { get; init; } = [];
 
-    /// <summary>Monotonic key version.</summary>
+    /// <summary>
+    /// Monotonic key version.
+    /// <para>单调密钥版本。</para>
+    /// </summary>
     public ulong KeyVersion { get; init; }
 
-    /// <summary>Serialized size.</summary>
+    /// <summary>
+    /// Serialized size.
+    /// <para>序列化大小。</para>
+    /// </summary>
     public const int Size = 4 + AvbCertConstants.PublicKeySize + AvbCertConstants.Digest256Size + AvbCertConstants.Digest256Size + 8;
 
     /// <summary>
     /// Serializes structure in libavb_cert binary layout.
+    /// <para>以libavb_cert二进制布局序列化结构。</para>
     /// </summary>
     public byte[] ToBytes()
     {
@@ -177,6 +247,7 @@ public sealed record AvbCertCertificateSignedData
 
     /// <summary>
     /// Parses signed data from binary payload.
+    /// <para>从二进制有效载荷解析签名数据。</para>
     /// </summary>
     public static AvbCertCertificateSignedData FromBytes(ReadOnlySpan<byte> data)
     {
@@ -213,20 +284,31 @@ public sealed record AvbCertCertificateSignedData
 
 /// <summary>
 /// Data structure of a libavb_cert certificate.
+/// <para>libavb_cert证书的数据结构。</para>
 /// </summary>
 public sealed record AvbCertCertificate
 {
-    /// <summary>Signed certificate fields.</summary>
+    /// <summary>
+    /// Signed certificate fields.
+    /// <para>签名的证书字段。</para>
+    /// </summary>
     public AvbCertCertificateSignedData SignedData { get; init; } = new();
 
-    /// <summary>RSA4096 signature over SHA-512 hash of signed data.</summary>
+    /// <summary>
+    /// RSA4096 signature over SHA-512 hash of signed data.
+    /// <para>对签名数据的SHA-512哈希的RSA4096签名。</para>
+    /// </summary>
     public byte[] Signature { get; init; } = [];
 
-    /// <summary>Serialized size.</summary>
+    /// <summary>
+    /// Serialized size.
+    /// <para>序列化大小。</para>
+    /// </summary>
     public const int Size = AvbCertCertificateSignedData.Size + AvbCertConstants.Rsa4096SignatureSize;
 
     /// <summary>
     /// Serializes certificate.
+    /// <para>序列化证书。</para>
     /// </summary>
     public byte[] ToBytes()
     {
@@ -244,6 +326,7 @@ public sealed record AvbCertCertificate
 
     /// <summary>
     /// Parses certificate from binary payload.
+    /// <para>从二进制有效载荷解析证书。</para>
     /// </summary>
     public static AvbCertCertificate FromBytes(ReadOnlySpan<byte> data)
     {
@@ -262,23 +345,37 @@ public sealed record AvbCertCertificate
 
 /// <summary>
 /// Data structure of libavb_cert public key metadata embedded in vbmeta.
+/// <para>嵌入在vbmeta中的libavb_cert公钥元数据的数据结构。</para>
 /// </summary>
 public sealed record AvbCertPublicKeyMetadata
 {
-    /// <summary>Current format version, expected to be 1.</summary>
+    /// <summary>
+    /// Current format version, expected to be 1.
+    /// <para>当前格式版本，期望为1。</para>
+    /// </summary>
     public uint Version { get; init; }
 
-    /// <summary>PIK certificate signed by PRK.</summary>
+    /// <summary>
+    /// PIK certificate signed by PRK.
+    /// <para>由PRK签名的PIK证书。</para>
+    /// </summary>
     public AvbCertCertificate ProductIntermediateKeyCertificate { get; init; } = new();
 
-    /// <summary>PSK certificate signed by PIK.</summary>
+    /// <summary>
+    /// PSK certificate signed by PIK.
+    /// <para>由PIK签名的PSK证书。</para>
+    /// </summary>
     public AvbCertCertificate ProductSigningKeyCertificate { get; init; } = new();
 
-    /// <summary>Serialized size.</summary>
+    /// <summary>
+    /// Serialized size.
+    /// <para>序列化大小。</para>
+    /// </summary>
     public const int Size = 4 + AvbCertCertificate.Size + AvbCertCertificate.Size;
 
     /// <summary>
     /// Parses metadata from binary payload.
+    /// <para>从二进制有效载荷解析元数据。</para>
     /// </summary>
     public static AvbCertPublicKeyMetadata FromBytes(ReadOnlySpan<byte> data)
     {
@@ -302,23 +399,37 @@ public sealed record AvbCertPublicKeyMetadata
 
 /// <summary>
 /// Data structure of libavb_cert unlock challenge.
+/// <para>libavb_cert解锁挑战的数据结构。</para>
 /// </summary>
 public sealed record AvbCertUnlockChallenge
 {
-    /// <summary>Current format version, expected to be 1.</summary>
+    /// <summary>
+    /// Current format version, expected to be 1.
+    /// <para>当前格式版本，期望为1。</para>
+    /// </summary>
     public uint Version { get; init; }
 
-    /// <summary>SHA-256 digest of product ID.</summary>
+    /// <summary>
+    /// SHA-256 digest of product ID.
+    /// <para>产品ID的SHA-256摘要。</para>
+    /// </summary>
     public byte[] ProductIdHash { get; init; } = [];
 
-    /// <summary>Random challenge bytes.</summary>
+    /// <summary>
+    /// Random challenge bytes.
+    /// <para>随机挑战字节。</para>
+    /// </summary>
     public byte[] Challenge { get; init; } = [];
 
-    /// <summary>Serialized size.</summary>
+    /// <summary>
+    /// Serialized size.
+    /// <para>序列化大小。</para>
+    /// </summary>
     public const int Size = 4 + AvbCertConstants.Digest256Size + AvbCertConstants.UnlockChallengeSize;
 
     /// <summary>
     /// Serializes unlock challenge in libavb_cert layout.
+    /// <para>以libavb_cert布局序列化解锁挑战。</para>
     /// </summary>
     public byte[] ToBytes()
     {
@@ -341,6 +452,7 @@ public sealed record AvbCertUnlockChallenge
 
     /// <summary>
     /// Parses unlock challenge from binary payload.
+    /// <para>从二进制有效载荷解析解锁挑战。</para>
     /// </summary>
     public static AvbCertUnlockChallenge FromBytes(ReadOnlySpan<byte> data)
     {
@@ -360,26 +472,43 @@ public sealed record AvbCertUnlockChallenge
 
 /// <summary>
 /// Data structure of libavb_cert unlock credential.
+/// <para>libavb_cert解锁凭证的数据结构。</para>
 /// </summary>
 public sealed record AvbCertUnlockCredential
 {
-    /// <summary>Current format version, expected to be 1.</summary>
+    /// <summary>
+    /// Current format version, expected to be 1.
+    /// <para>当前格式版本，期望为1。</para>
+    /// </summary>
     public uint Version { get; init; }
 
-    /// <summary>PIK certificate signed by PRK.</summary>
+    /// <summary>
+    /// PIK certificate signed by PRK.
+    /// <para>由PRK签名的PIK证书。</para>
+    /// </summary>
     public AvbCertCertificate ProductIntermediateKeyCertificate { get; init; } = new();
 
-    /// <summary>PUK certificate signed by PIK.</summary>
+    /// <summary>
+    /// PUK certificate signed by PIK.
+    /// <para>由PIK签名的PUK证书。</para>
+    /// </summary>
     public AvbCertCertificate ProductUnlockKeyCertificate { get; init; } = new();
 
-    /// <summary>Signature of challenge hash by PUK private key.</summary>
+    /// <summary>
+    /// Signature of challenge hash by PUK private key.
+    /// <para>由PUK私钥对挑战哈希的签名。</para>
+    /// </summary>
     public byte[] ChallengeSignature { get; init; } = [];
 
-    /// <summary>Serialized size.</summary>
+    /// <summary>
+    /// Serialized size.
+    /// <para>序列化大小。</para>
+    /// </summary>
     public const int Size = 4 + AvbCertCertificate.Size + AvbCertCertificate.Size + AvbCertConstants.Rsa4096SignatureSize;
 
     /// <summary>
     /// Serializes unlock credential in libavb_cert layout.
+    /// <para>以libavb_cert布局序列化解锁凭证。</para>
     /// </summary>
     public byte[] ToBytes()
     {
@@ -398,6 +527,7 @@ public sealed record AvbCertUnlockCredential
 
     /// <summary>
     /// Parses unlock credential from binary payload.
+    /// <para>从二进制有效载荷解析解锁凭证。</para>
     /// </summary>
     public static AvbCertUnlockCredential FromBytes(ReadOnlySpan<byte> data)
     {
@@ -418,6 +548,7 @@ public sealed record AvbCertUnlockCredential
 
 /// <summary>
 /// Managed implementation of libavb_cert validation flows.
+/// <para>libavb_cert验证流程的托管实现。</para>
 /// </summary>
 public sealed class AvbCertValidator
 {
@@ -447,6 +578,7 @@ public sealed class AvbCertValidator
 
     /// <summary>
     /// Validates vbmeta public key using libavb_cert metadata.
+    /// <para>使用libavb_cert元数据验证vbmeta公钥。</para>
     /// </summary>
     public AvbIOResult ValidateVBMetaPublicKey(
         IAvbCertOps certOps,
@@ -538,6 +670,7 @@ public sealed class AvbCertValidator
 
     /// <summary>
     /// Generates unlock challenge to be signed by unlock credentials.
+    /// <para>生成由解锁凭证签名的解锁挑战。</para>
     /// </summary>
     public AvbIOResult GenerateUnlockChallenge(IAvbCertOps certOps, out AvbCertUnlockChallenge challenge)
     {
@@ -574,6 +707,7 @@ public sealed class AvbCertValidator
 
     /// <summary>
     /// Validates unlock credential and challenge signature.
+    /// <para>验证解锁凭证和挑战签名。</para>
     /// </summary>
     public AvbIOResult ValidateUnlockCredential(
         IAvbCertOps certOps,

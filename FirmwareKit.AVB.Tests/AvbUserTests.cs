@@ -1,3 +1,8 @@
+using FirmwareKit.AVB.Ab;
+using FirmwareKit.AVB.Abstractions;
+using FirmwareKit.AVB.Core;
+using FirmwareKit.AVB.Enums;
+using FirmwareKit.AVB.VBMeta;
 using System.Buffers.Binary;
 
 namespace FirmwareKit.AVB.Tests;

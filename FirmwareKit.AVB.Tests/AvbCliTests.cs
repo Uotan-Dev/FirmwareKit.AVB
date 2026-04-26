@@ -1,3 +1,9 @@
+using FirmwareKit.AVB.Ab;
+using FirmwareKit.AVB.Core;
+using FirmwareKit.AVB.Descriptors;
+using FirmwareKit.AVB.Enums;
+using FirmwareKit.AVB.Security;
+using FirmwareKit.AVB.VBMeta;
 using System.Buffers.Binary;
 using System.Diagnostics;
 using System.Text;
@@ -228,7 +234,7 @@ public class AvbCliTests
             Assert.True(string.IsNullOrWhiteSpace(extractErr), extractErr);
 
             var encoded = File.ReadAllBytes(pubPath);
-            var parsed = FirmwareKit.AVB.AvbCrypto.ParseRSAPublicKey(encoded);
+            var parsed = AvbCrypto.ParseRSAPublicKey(encoded);
             Assert.Equal(256, parsed.Modulus!.Length);
 
             var (digestCode, _, digestErr) = await RunCliAsync(

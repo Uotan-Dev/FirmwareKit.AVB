@@ -1,3 +1,5 @@
+using FirmwareKit.AVB.Core;
+
 namespace FirmwareKit.AVB.Tests;
 
 public class AvbVersionTests

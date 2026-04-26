@@ -1,3 +1,8 @@
+using FirmwareKit.AVB.Ab;
+using FirmwareKit.AVB.Abstractions;
+using FirmwareKit.AVB.Enums;
+using FirmwareKit.AVB.Verification;
+
 namespace FirmwareKit.AVB.Tests;
 
 public class AvbBootControlTests
