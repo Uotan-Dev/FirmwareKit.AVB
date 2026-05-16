@@ -80,7 +80,7 @@ internal static class AvbCompat
     /// <para>元素数量。</para></param>
     /// <returns>A read-only span.
     /// <para>只读跨度。</para></returns>
-    public static unsafe ReadOnlySpan<T> CreateReadOnlySpanReadOnly<T>(ref T reference, int length) where T : unmanaged
+    public static unsafe ReadOnlySpan<T> CreateReadOnlySpan<T>(ref T reference, int length) where T : unmanaged
     {
 #if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
         return MemoryMarshal.CreateReadOnlySpan(ref reference, length);
@@ -93,8 +93,8 @@ internal static class AvbCompat
     }
 
     /// <summary>
-    /// Creates a read-only span from a reference and length.
-    /// <para>从引用和长度创建只读跨度。</para>
+    /// Creates a mutable span from a reference and length.
+    /// <para>从引用和长度创建可变跨度。</para>
     /// </summary>
     /// <typeparam name="T">The type of elements in the span.
     /// <para>跨度中元素的类型。</para></typeparam>
@@ -102,16 +102,16 @@ internal static class AvbCompat
     /// <para>对第一个元素的引用。</para></param>
     /// <param name="length">The number of elements.
     /// <para>元素数量。</para></param>
-    /// <returns>A read-only span.
-    /// <para>只读跨度。</para></returns>
-    public static unsafe ReadOnlySpan<T> CreateReadOnlySpan<T>(ref T reference, int length) where T : unmanaged
+    /// <returns>A mutable span.
+    /// <para>可变跨度。</para></returns>
+    public static unsafe Span<T> CreateSpan<T>(ref T reference, int length) where T : unmanaged
     {
 #if NETCOREAPP3_0_OR_GREATER || NETSTANDARD2_1_OR_GREATER
-        return MemoryMarshal.CreateReadOnlySpan(ref reference, length);
+        return MemoryMarshal.CreateSpan(ref reference, length);
 #else
         fixed (T* ptr = &reference)
         {
-            return new ReadOnlySpan<T>(ptr, length);
+            return new Span<T>(ptr, length);
         }
 #endif
     }

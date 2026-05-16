@@ -131,7 +131,7 @@ public readonly record struct AvbFooter
         get
         {
             var temp = _reserved;
-            var span = MemoryMarshal.AsBytes(AvbCompat.CreateReadOnlySpanReadOnly(ref temp, 1));
+            var span = AvbCompat.CreateReadOnlySpan(ref temp, 1);
             foreach (var b in span)
             {
                 if (b != 0) return false;

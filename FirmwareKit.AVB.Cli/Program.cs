@@ -12,6 +12,13 @@ using System.Text.RegularExpressions;
 
 return Run(args);
 
+file sealed class CredentialArchivePatterns
+{
+    public static readonly Regex PikRegex = new Regex("^pik_certificate.*\\.bin$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    public static readonly Regex PukCertRegex = new Regex("^puk_certificate.*\\.bin$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    public static readonly Regex PukKeyRegex = new Regex("^puk.*\\.pem$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+}
+
 static int Run(string[] args)
 {
     if (args.Length == 0)
@@ -2162,18 +2169,14 @@ static bool TryReadCredentialArchive(
     pukPem = string.Empty;
     error = string.Empty;
 
-    var pikRegex = new Regex("^pik_certificate.*\\.bin$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    var pukCertRegex = new Regex("^puk_certificate.*\\.bin$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    var pukKeyRegex = new Regex("^puk.*\\.pem$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-
     try
     {
         using var zipFile = File.OpenRead(archivePath);
         using var zip = new ZipArchive(zipFile, ZipArchiveMode.Read, leaveOpen: false);
 
-        var pikEntries = zip.Entries.Where(e => pikRegex.IsMatch(Path.GetFileName(e.FullName))).ToList();
-        var pukCertEntries = zip.Entries.Where(e => pukCertRegex.IsMatch(Path.GetFileName(e.FullName))).ToList();
-        var pukKeyEntries = zip.Entries.Where(e => pukKeyRegex.IsMatch(Path.GetFileName(e.FullName))).ToList();
+        var pikEntries = zip.Entries.Where(e => CredentialArchivePatterns.PikRegex.IsMatch(Path.GetFileName(e.FullName))).ToList();
+        var pukCertEntries = zip.Entries.Where(e => CredentialArchivePatterns.PukCertRegex.IsMatch(Path.GetFileName(e.FullName))).ToList();
+        var pukKeyEntries = zip.Entries.Where(e => CredentialArchivePatterns.PukKeyRegex.IsMatch(Path.GetFileName(e.FullName))).ToList();
 
         if (pikEntries.Count != 1 || pukCertEntries.Count != 1 || pukKeyEntries.Count != 1)
         {
