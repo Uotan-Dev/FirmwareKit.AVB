@@ -1,7 +1,6 @@
 using FirmwareKit.AVB.Enums;
 using FirmwareKit.AVB.Utilities;
 using System.Buffers.Binary;
-using System.IO;
 using System.Numerics;
 using System.Security.Cryptography;
 
@@ -198,7 +197,7 @@ public static class AvbCrypto
         unchecked
         {
             uint inv = 1;
-            for ( var i = 0; i < 5; i++)
+            for (var i = 0; i < 5; i++)
             {
                 inv *= 2 - (n0 * inv);
             }

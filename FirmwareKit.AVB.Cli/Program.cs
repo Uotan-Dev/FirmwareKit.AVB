@@ -1466,20 +1466,20 @@ static byte[] BuildVBMetaBlob(
         var algorithm = (AvbAlgorithmType)algorithmType;
         var dataToSign = header.Concat(auxBlock).ToArray();
         var signature = AvbCrypto.SignData(keyPath, algorithm, dataToSign, signingHelper, signingHelperWithFiles);
-        
+
         // Read public key from private key
         using var rsa = RSA.Create();
         rsa.ImportFromPem(File.ReadAllText(keyPath));
         var publicKey = rsa.ExportParameters(false);
         var encodedPublicKey = AvbCrypto.EncodeRSAPublicKey(publicKey);
-        
+
         // Build auth block
         var hash = AvbCrypto.CalculateHash(algorithm, dataToSign);
         authBlock = new byte[hash.Length + signature.Length + encodedPublicKey.Length];
         hash.CopyTo(authBlock, 0);
         signature.CopyTo(authBlock, hash.Length);
         encodedPublicKey.CopyTo(authBlock, hash.Length + signature.Length);
-        
+
         // Update header with auth block size and offsets
         BinaryPrimitives.WriteUInt64BigEndian(header.AsSpan(12, 8), (ulong)authBlock.Length);
         BinaryPrimitives.WriteUInt64BigEndian(header.AsSpan(32, 8), (ulong)hash.Length);
