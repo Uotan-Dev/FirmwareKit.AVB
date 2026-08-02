@@ -1,6 +1,9 @@
 # FirmwareKit.AVB
 
-A C# implementation of Android Verified Boot (AVB) library, supporting parsing and verification of VBMeta images and Android footprints.
+[![NuGet Version](https://img.shields.io/nuget/v/FirmwareKit.AVB.svg)](https://www.nuget.org/packages/FirmwareKit.AVB)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+A C# implementation of Android Verified Boot (AVB), supporting parsing, editing, and verification of VBMeta images, dm-verity hashtrees, and FEC data. Part of the **FirmwareKit** ecosystem.
 
 ## Features
 
@@ -102,6 +105,22 @@ var result = verifier.VerifySlot("boot", 0);
 - RSA signature verification is performed by the .NET runtime (`RSA.VerifyHash`, PKCS#1 v1.5 padding). Results are functionally equivalent to libavb's constant-time Montgomery `modpowF4`, but the .NET implementation is not constant-time, so timing side channels are possible against a hostile local adversary. Do not rely on this library as a constant-time implementation for boot-loader-grade security.
 - Integrity comparisons (hashes, root digests, signatures' expected values) use `AvbUtil.SafeMemCmp`, a constant-time comparison.
 - Like the reference `avb_vbmeta_image_verify()`, the reserved bytes of VBMeta headers are not validated during verification; use `AvbVBMetaImageHeader.IsReservedValid` when the strict check is needed.
+
+## Version History
+
+- **1.2.0**
+  - Add dm-verity hashtree build/verify (`AvbHashtree`, port of avbtool `generate_hash_tree`).
+  - Add Reed-Solomon FEC parity generation (`AvbFec`, compatible with AOSP `system/extras/libfec` and the `fec` tool).
+  - New CLI commands: `make_hashtree_image`, `verify_hashtree`, `calc_footer_size`, `fec encode`, `fec calc-size`.
+  - Fix `AvbHashtreeDescriptor` on-disk layout to match `avb_hashtree_descriptor.h`.
+  - Verify signatures unconditionally; reject signature sizes that do not match the modulus.
+  - Delegate CRC32 to the `Crc32.NET` package (byte-identical output, verified by standard check vectors).
+  - Native AOT and trimming compatible.
+- **1.1.0**
+  - Managed `libavb_cert` unlock-credential validation (`AvbCertValidator`, `IAvbCertOps`).
+  - `persistent-digest` and `auth-unlock` CLI flows.
+- **1.0.0**
+  - Initial release: VBMeta parsing/verification, descriptors, footers, slot verification, A/B flow, user toggles.
 
 ## License
 

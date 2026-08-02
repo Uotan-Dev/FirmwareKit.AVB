@@ -10,12 +10,15 @@
 
     <!-- NuGet Metadata -->
     <PackageId>FirmwareKit.AVB</PackageId>
-    <Version>1.1.0</Version>
+    <Version>1.2.0</Version>
     <Authors>ZZi_Cai</Authors>
     <Company>Uotan-Dev</Company>
-    <Description>A .NET library for parsing, editing, and exporting Android VBMeta image AVB (Android Verified Boot) metadata.</Description>
+    <Description>A .NET library for parsing, editing, and exporting Android VBMeta image AVB (Android Verified Boot) metadata, with dm-verity hashtree and Reed-Solomon FEC support. Part of the FirmwareKit ecosystem.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageTags>AVB;Android;Bootloader;VBMeta;Firmware</PackageTags>
+    <PackageProjectUrl>https://github.com/Uotan-Dev/FirmwareKit.AVB</PackageProjectUrl>
+    <PackageTags>avb;android;verified-boot;vbmeta;bootloader;firmware;hashtree;dm-verity;fec</PackageTags>
+    <PackageReleaseNotes>1.2.0 - Add dm-verity hashtree build/verify (AvbHashtree) and Reed-Solomon FEC (AvbFec) matching AOSP libfec/avbtool; new CLI commands make_hashtree_image, verify_hashtree, calc_footer_size, fec encode, fec calc-size; fix hashtree descriptor on-disk layout; unconditional signature verification with modulus-size check; CRC32 delegated to Crc32.NET; Native AOT and trimming compatible.</PackageReleaseNotes>
+    <Copyright>Copyright (c) 2026 ZZi_Cai</Copyright>
     <RepositoryUrl>https://github.com/Uotan-Dev/FirmwareKit.AVB</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
