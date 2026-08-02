@@ -630,7 +630,19 @@ public class AvbSlotVerifier
             return ret;
         }
 
-        foreach (var desc in image.GetDescriptors())
+        List<AvbDescriptor> descriptors;
+        try
+        {
+            descriptors = image.GetDescriptors();
+        }
+        catch (ArgumentException)
+        {
+            // The reference implementation maps a failed descriptor walk to
+            // ERROR_INVALID_METADATA (avb_descriptor_get_all() returns NULL).
+            return AvbSlotVerifyResult.ErrorInvalidMetadata;
+        }
+
+        foreach (var desc in descriptors)
         {
             if (desc is AvbHashDescriptor hash)
             {

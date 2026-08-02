@@ -2,6 +2,7 @@ using FirmwareKit.AVB.Descriptors;
 using FirmwareKit.AVB.Enums;
 using FirmwareKit.AVB.VBMeta;
 using System.Buffers.Binary;
+using System.Security.Cryptography;
 
 namespace FirmwareKit.AVB.Tests;
 
@@ -431,5 +432,101 @@ public class AvbVBMetaImageTests
         header.ToBytes(reserialized);
 
         Assert.Equal(original, reserialized);
+    }
+
+    [Fact]
+    public void VerifyIntegrity_AlgorithmSetWithEmptySignature_ShouldReturnSignatureMismatch()
+    {
+        // Like the reference avb_vbmeta_image_verify(), the signature must be
+        // verified whenever an algorithm is set - a zero-length signature is a
+        // verification failure, not a reason to skip the check.
+        var data = BuildMinimalVBMeta(authBlockSize: 64, auxBlockSize: 64, algorithmType: (uint)AvbAlgorithmType.Sha256Rsa2048);
+
+        // hash_size must equal the algorithm's digest size (32 for SHA-256).
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(32, 8), 0);  // hash_offset
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(40, 8), 32); // hash_size
+
+        // Place the correct hash of (header + auxiliary) so the hash check passes.
+        var authOffset = AvbVBMetaImageHeader.Size;
+        var computed = SHA256.HashData(data.AsSpan(0, authOffset + 64));
+        computed.CopyTo(data, authOffset);
+
+        // signature_offset/signature_size remain zero.
+        var image = new AvbVBMetaImage(data);
+        var result = image.VerifyIntegrity();
+
+        Assert.Equal(AvbVBMetaVerifyResult.SignatureMismatch, result);
+    }
+
+    [Fact]
+    public void VerifyIntegrity_AlgorithmSetWithWrongSizeSignature_ShouldReturnSignatureMismatch()
+    {
+        // A signature whose length does not match the modulus size must fail
+        // (avb_rsa_verify() rejects sig_num_bytes != key length).
+        var data = BuildMinimalVBMeta(authBlockSize: 64, auxBlockSize: 64, algorithmType: (uint)AvbAlgorithmType.Sha256Rsa2048);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(32, 8), 0);  // hash_offset
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(40, 8), 32); // hash_size
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(48, 8), 0);  // signature_offset
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(56, 8), 8);  // signature_size - not 256
+
+        var authOffset = AvbVBMetaImageHeader.Size;
+        var computed = SHA256.HashData(data.AsSpan(0, authOffset + 64));
+        computed.CopyTo(data, authOffset);
+
+        var image = new AvbVBMetaImage(data);
+        var result = image.VerifyIntegrity();
+
+        Assert.Equal(AvbVBMetaVerifyResult.SignatureMismatch, result);
+    }
+
+    [Fact]
+    public void GetDescriptors_DescriptorExceedingBlock_ShouldThrow()
+    {
+        var headerSize = AvbVBMetaImageHeader.Size;
+        var authSize = 64;
+        var auxSize = 64;
+        var totalSize = headerSize + authSize + auxSize;
+        var data = new byte[totalSize];
+
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(0, 4), 0x30425641);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(12, 8), (ulong)authSize);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(20, 8), (ulong)auxSize);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(96, 8), 0);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(104, 8), 64);
+
+        // Descriptor header claims 56 bytes following (multiple of 8) but the
+        // 64-byte block only fits 48 bytes after the 16-byte descriptor header.
+        var auxOffset = headerSize + authSize;
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(auxOffset, 8), (ulong)AvbDescriptorTag.Property);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(auxOffset + 8, 8), 56);
+
+        var image = new AvbVBMetaImage(data);
+        Assert.Throws<ArgumentException>(() => image.GetDescriptors());
+    }
+
+    [Fact]
+    public void GetDescriptors_OversizedNumBytesFollowing_ShouldThrowArgumentException()
+    {
+        var headerSize = AvbVBMetaImageHeader.Size;
+        var authSize = 64;
+        var auxSize = 64;
+        var totalSize = headerSize + authSize + auxSize;
+        var data = new byte[totalSize];
+
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(0, 4), 0x30425641);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(12, 8), (ulong)authSize);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(20, 8), (ulong)auxSize);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(96, 8), 0);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(104, 8), 64);
+
+        // num_bytes_following near ulong.MaxValue (multiple of 8) must produce a
+        // clean ArgumentException instead of an OverflowException or a wrapped
+        // iteration offset.
+        var auxOffset = headerSize + authSize;
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(auxOffset, 8), (ulong)AvbDescriptorTag.Property);
+        BinaryPrimitives.WriteUInt64BigEndian(data.AsSpan(auxOffset + 8, 8), 0xfffffffffffffff8UL);
+
+        var image = new AvbVBMetaImage(data);
+        Assert.Throws<ArgumentException>(() => image.GetDescriptors());
     }
 }

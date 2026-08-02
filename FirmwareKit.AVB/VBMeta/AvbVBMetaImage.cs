@@ -104,11 +104,6 @@ public sealed class AvbVBMetaImage
             return AvbVBMetaVerifyResult.InvalidVBMetaHeader;
         }
 
-        if (!Header.IsReservedValid)
-        {
-            return AvbVBMetaVerifyResult.InvalidVBMetaHeader;
-        }
-
         if ((Header.AuthenticationDataBlockSize & 0x3f) != 0 || (Header.AuxiliaryDataBlockSize & 0x3f) != 0)
         {
             return AvbVBMetaVerifyResult.InvalidVBMetaHeader;
@@ -190,25 +185,32 @@ public sealed class AvbVBMetaImage
             return AvbVBMetaVerifyResult.HashMismatch;
         }
 
-        if (Header.SignatureSize > 0)
+        // libavb always verifies the signature when an algorithm is set
+        // (avb_rsa_verify() is called unconditionally), so a signature of
+        // length zero must fail verification rather than be skipped.
+        var storedSignature = AuthenticationData.Span.Slice((int)Header.SignatureOffset, (int)Header.SignatureSize);
+        var publicKeyData = AuxiliaryData.Span.Slice((int)Header.PublicKeyOffset, (int)Header.PublicKeySize);
+
+        using var rsa = RSA.Create();
+        try
         {
-            var storedSignature = AuthenticationData.Span.Slice((int)Header.SignatureOffset, (int)Header.SignatureSize);
-            var publicKeyData = AuxiliaryData.Span.Slice((int)Header.PublicKeyOffset, (int)Header.PublicKeySize);
+            rsa.ImportParameters(AvbCrypto.ParseRSAPublicKey(publicKeyData));
+        }
+        catch
+        {
+            return AvbVBMetaVerifyResult.SignatureMismatch;
+        }
 
-            using var rsa = RSA.Create();
-            try
-            {
-                rsa.ImportParameters(AvbCrypto.ParseRSAPublicKey(publicKeyData));
-            }
-            catch
-            {
-                return AvbVBMetaVerifyResult.SignatureMismatch;
-            }
+        // The signature must be exactly one modulus in size; avb_rsa_verify()
+        // rejects any other length with a verification failure.
+        if (storedSignature.Length != rsa.KeySize / 8)
+        {
+            return AvbVBMetaVerifyResult.SignatureMismatch;
+        }
 
-            if (!rsa.VerifyHash(computedHash, storedSignature.ToArray(), AvbCrypto.GetHashAlgorithmName(algorithm), RSASignaturePadding.Pkcs1))
-            {
-                return AvbVBMetaVerifyResult.SignatureMismatch;
-            }
+        if (!rsa.VerifyHash(computedHash, storedSignature.ToArray(), AvbCrypto.GetHashAlgorithmName(algorithm), RSASignaturePadding.Pkcs1))
+        {
+            return AvbVBMetaVerifyResult.SignatureMismatch;
         }
 
         return AvbVBMetaVerifyResult.Ok;
@@ -266,18 +268,14 @@ public sealed class AvbVBMetaImage
     /// <para>描述符列表（Hash、Hashtree、Chain等）。</para></returns>
     public List<AvbDescriptor> GetDescriptors()
     {
-        var descriptorsSpan = AuxiliaryData.Span.Slice((int)Header.DescriptorsOffset, (int)Header.DescriptorsSize);
-        var offset = 0;
-        var result = new List<AvbDescriptor>();
-
-        while (offset < (int)Header.DescriptorsSize)
+        if (Header.DescriptorsOffset > (ulong)AuxiliaryData.Length ||
+            Header.DescriptorsSize > (ulong)AuxiliaryData.Length - Header.DescriptorsOffset)
         {
-            var desc = AvbDescriptor.FromBytes(descriptorsSpan[offset..]);
-            result.Add(desc);
-
-            offset += 16 + (int)desc.NumBytesFollowing;
+            throw new ArgumentException("Descriptors are not entirely in the auxiliary data block.");
         }
-        return result;
+
+        var descriptorsSpan = AuxiliaryData.Span.Slice((int)Header.DescriptorsOffset, (int)Header.DescriptorsSize);
+        return AvbDescriptor.Enumerate(descriptorsSpan);
     }
 
     /// <summary>

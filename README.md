@@ -6,11 +6,13 @@ A C# implementation of Android Verified Boot (AVB) library, supporting parsing a
 
 - Parse VBMeta headers and images.
 - Support for AVB descriptors and footers.
+- dm-verity compatible hashtree building and verification via `AvbHashtree` (port of avbtool's `generate_hash_tree`).
+- dm-verity Forward Error Correction (FEC) via `AvbFec` - Reed-Solomon parity generation compatible with AOSP `system/extras/libfec` and the `fec` tool (used by `add_hashtree_footer --generate_fec`).
 - Hardware-independent I/O interface via `IAvbOps`.
 - Managed `libavb_ab` flow and boot-control facade via `AvbAbFlow` and `AvbBootControl`.
 - Managed `libavb_user` equivalent helpers via `AvbUser` (verification/verity toggles).
 - Managed `libavb_cert` equivalent validation via `AvbCertValidator` and `IAvbCertOps`.
-- Multi-framework support: `net8.0`, `net10.0`.
+- Multi-framework support: `netstandard2.0`, `netstandard2.1`, `net6.0`, `net8.0`, `net10.0`.
 
 ## CLI (Managed, No Python Runtime)
 
@@ -25,6 +27,14 @@ dotnet run --project FirmwareKit.AVB.Cli -- extract_public_key --key signing.pem
 dotnet run --project FirmwareKit.AVB.Cli -- extract_public_key_digest --key signing.pem --output avb_pk.sha256
 dotnet run --project FirmwareKit.AVB.Cli -- make_vbmeta_image --output vbmeta.img --algorithm NONE
 dotnet run --project FirmwareKit.AVB.Cli -- add_hash_footer --image boot.img --partition_size 67108864 --partition_name boot
+dotnet run --project FirmwareKit.AVB.Cli -- add_hashtree_footer --image system.img --partition_size 1073741824 --partition_name system
+dotnet run --project FirmwareKit.AVB.Cli -- add_hashtree_footer --image system.img --partition_size 1073741824 --partition_name system --do_not_generate_fec
+dotnet run --project FirmwareKit.AVB.Cli -- add_hashtree_footer --image system.img --partition_size 1073741824 --partition_name system --fec_num_roots 4
+dotnet run --project FirmwareKit.AVB.Cli -- make_hashtree_image --image system.img --output system.hashtree --hash_algorithm sha256 --block_size 4096
+dotnet run --project FirmwareKit.AVB.Cli -- verify_hashtree --image system.img --hashtree system.hashtree --root_digest <hex>
+dotnet run --project FirmwareKit.AVB.Cli -- calc_footer_size --partition_size 1073741824
+dotnet run --project FirmwareKit.AVB.Cli -- fec encode --image system.img --output system.fec --roots 2
+dotnet run --project FirmwareKit.AVB.Cli -- fec calc-size --data_size 1073741824 --roots 2
 dotnet run --project FirmwareKit.AVB.Cli -- append_vbmeta_image --image boot.img --vbmeta_image vbmeta.img --partition_size 67108864
 dotnet run --project FirmwareKit.AVB.Cli -- erase_footer --image boot.img
 dotnet run --project FirmwareKit.AVB.Cli -- resize_image --image boot.img --partition_size 83886080
@@ -86,6 +96,12 @@ using FirmwareKit.AVB;
 var verifier = new AvbSlotVerifier(ops);
 var result = verifier.VerifySlot("boot", 0);
 ```
+
+## Security Notes
+
+- RSA signature verification is performed by the .NET runtime (`RSA.VerifyHash`, PKCS#1 v1.5 padding). Results are functionally equivalent to libavb's constant-time Montgomery `modpowF4`, but the .NET implementation is not constant-time, so timing side channels are possible against a hostile local adversary. Do not rely on this library as a constant-time implementation for boot-loader-grade security.
+- Integrity comparisons (hashes, root digests, signatures' expected values) use `AvbUtil.SafeMemCmp`, a constant-time comparison.
+- Like the reference `avb_vbmeta_image_verify()`, the reserved bytes of VBMeta headers are not validated during verification; use `AvbVBMetaImageHeader.IsReservedValid` when the strict check is needed.
 
 ## License
 

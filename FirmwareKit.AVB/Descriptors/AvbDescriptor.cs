@@ -126,11 +126,15 @@ public abstract record AvbDescriptor
                 throw new ArgumentException("Descriptor size is not divisible by 8");
             }
 
-            var totalSize = 16 + checked((int)numBytesFollowing);
-            if (data.Length - offset < totalSize)
+            // Guard the narrowing conversion so an oversized
+            // num_bytes_following yields a clean ArgumentException instead
+            // of an OverflowException or a wrapped offset.
+            if (numBytesFollowing > (ulong)(data.Length - offset - 16))
             {
                 throw new ArgumentException("Data too small for descriptor content");
             }
+
+            var totalSize = 16 + (int)numBytesFollowing;
 
             descriptors.Add(FromBytes(data.Slice(offset, totalSize)));
             offset += totalSize;

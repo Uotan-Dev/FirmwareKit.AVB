@@ -2,6 +2,8 @@ using FirmwareKit.AVB.Ab;
 using FirmwareKit.AVB.Core;
 using FirmwareKit.AVB.Descriptors;
 using FirmwareKit.AVB.Enums;
+using FirmwareKit.AVB.Fec;
+using FirmwareKit.AVB.Hashtree;
 using FirmwareKit.AVB.Security;
 using FirmwareKit.AVB.VBMeta;
 using System.Buffers.Binary;
@@ -11,13 +13,6 @@ using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 
 return Run(args);
-
-file sealed class CredentialArchivePatterns
-{
-    public static readonly Regex PikRegex = new Regex("^pik_certificate.*\\.bin$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    public static readonly Regex PukCertRegex = new Regex("^puk_certificate.*\\.bin$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-    public static readonly Regex PukKeyRegex = new Regex("^puk.*\\.pem$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
-}
 
 static int Run(string[] args)
 {
@@ -63,6 +58,31 @@ static int Run(string[] args)
         if (args.Length >= 1 && args[0] == "add_hashtree_footer")
         {
             return AddHashtreeFooterCommand(args.Skip(1).ToArray());
+        }
+
+        if (args.Length >= 1 && args[0] == "make_hashtree_image")
+        {
+            return MakeHashtreeImageCommand(args.Skip(1).ToArray());
+        }
+
+        if (args.Length >= 1 && args[0] == "verify_hashtree")
+        {
+            return VerifyHashtreeCommand(args.Skip(1).ToArray());
+        }
+
+        if (args.Length >= 1 && args[0] == "calc_footer_size")
+        {
+            return CalcFooterSizeCommand(args.Skip(1).ToArray());
+        }
+
+        if (args.Length >= 2 && args[0] == "fec" && args[1] == "encode")
+        {
+            return FecEncodeCommand(args.Skip(2).ToArray());
+        }
+
+        if (args.Length >= 2 && args[0] == "fec" && args[1] == "calc-size")
+        {
+            return FecCalcSizeCommand(args.Skip(2).ToArray());
         }
 
         if (args.Length >= 3 && args[0] == "vbmeta" && args[1] == "verify")
@@ -682,9 +702,30 @@ static int AddHashtreeFooterCommand(string[] args)
         image = image.AsSpan(0, (int)existingFooter.OriginalImageSize).ToArray();
     }
 
-    // Generate hashtree
-    var hashtree = GenerateHashTree(image, (ulong)image.Length, blockSize, hashAlgorithm, salt);
-    var rootDigest = AvbCrypto.CalculateHash(hashAlgorithm, salt, hashtree);
+    if (image.Length % blockSize != 0)
+    {
+        Console.Error.WriteLine($"error: image size {image.Length} is not a multiple of block size {blockSize}");
+        return 9;
+    }
+
+    var hashtree = GenerateHashTree(image, blockSize, hashAlgorithm, salt, out var rootDigest);
+
+    // FEC (Forward Error Correction) parity data over data + hashtree,
+    // mirroring avbtool add_hashtree_footer with --generate_fec (default on).
+    var generateFec = !flags.Contains("--do_not_generate_fec");
+    var fecNumRoots = options.TryGetValue("--fec_num_roots", out var fecRootsText) && int.TryParse(fecRootsText, out var fecRoots)
+        ? fecRoots
+        : AvbFec.DefaultRoots;
+    byte[] fecData = Array.Empty<byte>();
+    ulong fecOffset = 0;
+    if (generateFec)
+    {
+        var dataPlusTree = new byte[image.Length + hashtree.Length];
+        image.CopyTo(dataPlusTree, 0);
+        hashtree.CopyTo(dataPlusTree, image.Length);
+        fecData = AvbFec.ComputeParity(dataPlusTree, fecNumRoots);
+        fecOffset = (ulong)(image.Length + hashtree.Length);
+    }
 
     var hashtreeDescriptor = BuildHashtreeDescriptorBlob(
         imageSize: (ulong)image.Length,
@@ -695,6 +736,9 @@ static int AddHashtreeFooterCommand(string[] args)
         blockSize: blockSize,
         treeOffset: (ulong)image.Length,
         treeSize: (ulong)hashtree.Length,
+        fecNumRoots: generateFec ? (uint)fecNumRoots : 0U,
+        fecOffset: generateFec ? fecOffset : 0UL,
+        fecSize: generateFec ? (ulong)fecData.Length : 0UL,
         descriptorFlags: flags.Contains("--do_not_use_ab") ? (uint)AvbHashDescriptorFlags.DoNotUseAb : 0U);
 
     var rollbackIndex = options.TryGetValue("--rollback_index", out var rollbackIndexText) && ulong.TryParse(rollbackIndexText, out var ri)
@@ -735,8 +779,9 @@ static int AddHashtreeFooterCommand(string[] args)
         const ulong blockSizeUL = 4096;
         var alignedImage = AlignUp((ulong)image.Length, blockSizeUL);
         var alignedHashtree = AlignUp((ulong)hashtree.Length, blockSizeUL);
+        var alignedFec = AlignUp((ulong)fecData.Length, blockSizeUL);
         var alignedVbmeta = AlignUp((ulong)vbmetaBlob.Length, blockSizeUL);
-        partitionSize = alignedImage + alignedHashtree + alignedVbmeta + blockSizeUL;
+        partitionSize = alignedImage + alignedHashtree + alignedFec + alignedVbmeta + blockSizeUL;
     }
     else if (!options.TryGetValue("--partition_size", out var partitionSizeText) || !ulong.TryParse(partitionSizeText, out partitionSize))
     {
@@ -747,13 +792,12 @@ static int AddHashtreeFooterCommand(string[] args)
     if (flags.Contains("--calc_max_image_size"))
     {
         const ulong blockSizeUL = 4096;
-        var maxImage = partitionSize - AlignUp((ulong)hashtree.Length, blockSizeUL) - AlignUp((ulong)vbmetaBlob.Length, blockSizeUL) - blockSizeUL;
+        var maxImage = partitionSize - AlignUp((ulong)hashtree.Length, blockSizeUL) - AlignUp((ulong)fecData.Length, blockSizeUL) - AlignUp((ulong)vbmetaBlob.Length, blockSizeUL) - blockSizeUL;
         Console.WriteLine(maxImage);
         return 0;
     }
 
-    // Append hashtree and vbmeta
-    var appendResult = AppendHashtreeAndVBMetaInternal(imagePath, image, hashtree, originalImageSize, vbmetaBlob, partitionSize);
+    var appendResult = AppendHashtreeAndVBMetaInternal(imagePath, image, hashtree, fecData, originalImageSize, vbmetaBlob, partitionSize);
     if (appendResult != 0)
     {
         return appendResult;
@@ -1302,6 +1346,178 @@ static byte[] BuildHashDescriptorBlob(
     return descriptor;
 }
 
+static int MakeHashtreeImageCommand(string[] args)
+{
+    var options = ParseOptions(args);
+
+    if (!options.TryGetValue("--image", out var imagePath))
+    {
+        Console.Error.WriteLine("error: missing required option --image for make_hashtree_image");
+        return 9;
+    }
+
+    if (!options.TryGetValue("--output", out var outputPath))
+    {
+        Console.Error.WriteLine("error: missing required option --output for make_hashtree_image");
+        return 9;
+    }
+
+    var hashAlgorithm = options.TryGetValue("--hash_algorithm", out var ha) ? ha.ToLowerInvariant() : "sha256";
+    var blockSize = options.TryGetValue("--block_size", out var blockSizeText) && int.TryParse(blockSizeText, out var bs) ? bs : 4096;
+
+    byte[] salt;
+    if (options.TryGetValue("--salt", out var saltHex))
+    {
+        try
+        {
+            salt = Convert.FromHexString(saltHex);
+        }
+        catch
+        {
+            Console.Error.WriteLine("error: --salt must be valid hex");
+            return 9;
+        }
+    }
+    else
+    {
+        salt = new byte[32];
+        RandomNumberGenerator.Fill(salt);
+    }
+
+    var image = File.ReadAllBytes(imagePath);
+    byte[] rootDigest;
+    var tree = AvbHashtree.Build(image, blockSize, hashAlgorithm, salt, out rootDigest);
+
+    File.WriteAllBytes(outputPath, tree);
+    Console.WriteLine(ToHexLower(rootDigest));
+    return 0;
+}
+
+static int VerifyHashtreeCommand(string[] args)
+{
+    var options = ParseOptions(args);
+
+    if (!options.TryGetValue("--image", out var imagePath))
+    {
+        Console.Error.WriteLine("error: missing required option --image for verify_hashtree");
+        return 9;
+    }
+
+    if (!options.TryGetValue("--hashtree", out var hashtreePath))
+    {
+        Console.Error.WriteLine("error: missing required option --hashtree for verify_hashtree");
+        return 9;
+    }
+
+    var hashAlgorithm = options.TryGetValue("--hash_algorithm", out var ha) ? ha.ToLowerInvariant() : "sha256";
+    var blockSize = options.TryGetValue("--block_size", out var blockSizeText) && int.TryParse(blockSizeText, out var bs) ? bs : 4096;
+
+    byte[] salt;
+    if (options.TryGetValue("--salt", out var saltHex))
+    {
+        try
+        {
+            salt = Convert.FromHexString(saltHex);
+        }
+        catch
+        {
+            Console.Error.WriteLine("error: --salt must be valid hex");
+            return 9;
+        }
+    }
+    else
+    {
+        salt = Array.Empty<byte>();
+    }
+
+    byte[] rootDigest = Array.Empty<byte>();
+    if (options.TryGetValue("--root_digest", out var rootHex))
+    {
+        try
+        {
+            rootDigest = Convert.FromHexString(rootHex);
+        }
+        catch
+        {
+            Console.Error.WriteLine("error: --root_digest must be valid hex");
+            return 9;
+        }
+    }
+
+    var image = File.ReadAllBytes(imagePath);
+    var tree = File.ReadAllBytes(hashtreePath);
+
+    if (!AvbHashtree.Verify(image, blockSize, hashAlgorithm, salt, tree, rootDigest))
+    {
+        Console.Error.WriteLine("error: hashtree verification failed");
+        return 9;
+    }
+
+    Console.WriteLine("hashtree verified");
+    return 0;
+}
+
+static int CalcFooterSizeCommand(string[] args)
+{
+    var options = ParseOptions(args);
+
+    if (!options.TryGetValue("--partition_size", out var partitionSizeText) || !ulong.TryParse(partitionSizeText, out var partitionSize))
+    {
+        Console.Error.WriteLine("error: missing or invalid --partition_size for calc_footer_size");
+        return 9;
+    }
+
+    var vbmetaSize = options.TryGetValue("--vbmeta_size", out var vbmetaSizeText) && ulong.TryParse(vbmetaSizeText, out var vs)
+        ? vs
+        : AvbVBMetaImageHeader.Size;
+
+    // Footer region reserved by add_hashtree_footer: the vbmeta block padded
+    // to the block size plus one block holding the 64-byte AVB footer.
+    const ulong blockSize = 4096;
+    var footerSize = AlignUp(vbmetaSize, blockSize) + blockSize;
+    Console.WriteLine(footerSize);
+    return 0;
+}
+
+static int FecEncodeCommand(string[] args)
+{
+    var options = ParseOptions(args);
+
+    if (!options.TryGetValue("--image", out var imagePath))
+    {
+        Console.Error.WriteLine("error: missing required option --image for fec encode");
+        return 9;
+    }
+
+    if (!options.TryGetValue("--output", out var outputPath))
+    {
+        Console.Error.WriteLine("error: missing required option --output for fec encode");
+        return 9;
+    }
+
+    var roots = options.TryGetValue("--roots", out var rootsText) && int.TryParse(rootsText, out var r) ? r : AvbFec.DefaultRoots;
+    var image = File.ReadAllBytes(imagePath);
+    var parity = AvbFec.ComputeParity(image, roots);
+    File.WriteAllBytes(outputPath, parity);
+    Console.WriteLine(parity.Length);
+    return 0;
+}
+
+static int FecCalcSizeCommand(string[] args)
+{
+    var options = ParseOptions(args);
+
+    if (!options.TryGetValue("--data_size", out var sizeText) || !ulong.TryParse(sizeText, out var dataSize))
+    {
+        Console.Error.WriteLine("error: missing or invalid --data_size for fec calc-size");
+        return 9;
+    }
+
+    var roots = options.TryGetValue("--roots", out var rootsText) && int.TryParse(rootsText, out var r) ? r : AvbFec.DefaultRoots;
+    Console.WriteLine(AvbFec.CalculateEccSize(dataSize, roots));
+    return 0;
+}
+
 static byte[] BuildHashtreeDescriptorBlob(
     ulong imageSize,
     string hashAlgorithm,
@@ -1311,29 +1527,38 @@ static byte[] BuildHashtreeDescriptorBlob(
     int blockSize,
     ulong treeOffset,
     ulong treeSize,
+    uint fecNumRoots,
+    ulong fecOffset,
+    ulong fecSize,
     uint descriptorFlags)
 {
     var partitionBytes = System.Text.Encoding.UTF8.GetBytes(partitionName);
-    var bodyLength = 144 + partitionBytes.Length + salt.Length + rootDigest.Length;
+    var bodyLength = 164 + partitionBytes.Length + salt.Length + rootDigest.Length;
     var bodyPaddedLength = (int)AlignUp((ulong)bodyLength, 8);
 
     var body = new byte[bodyPaddedLength];
-    BinaryPrimitives.WriteUInt64BigEndian(body.AsSpan(0, 8), imageSize);
+    // Matches the on-disk AvbHashtreeDescriptor layout (avb_hashtree_descriptor.h):
+    // dm_verity_version, image_size, tree_offset, tree_size, data/hash block
+    // sizes, fec fields, hash_algorithm[32], lengths, flags, reserved[60].
+    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(0, 4), 1); // dm_verity_version
+    BinaryPrimitives.WriteUInt64BigEndian(body.AsSpan(4, 8), imageSize);
+    BinaryPrimitives.WriteUInt64BigEndian(body.AsSpan(12, 8), treeOffset);
+    BinaryPrimitives.WriteUInt64BigEndian(body.AsSpan(20, 8), treeSize);
+    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(28, 4), (uint)blockSize); // data_block_size
+    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(32, 4), (uint)blockSize); // hash_block_size
+    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(36, 4), fecNumRoots);
+    BinaryPrimitives.WriteUInt64BigEndian(body.AsSpan(40, 8), fecOffset);
+    BinaryPrimitives.WriteUInt64BigEndian(body.AsSpan(48, 8), fecSize);
 
     var hashAlgorithmBytes = System.Text.Encoding.ASCII.GetBytes(hashAlgorithm);
-    hashAlgorithmBytes.AsSpan(0, Math.Min(hashAlgorithmBytes.Length, 32)).CopyTo(body.AsSpan(8, 32));
-    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(40, 4), (uint)partitionBytes.Length);
-    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(44, 4), (uint)salt.Length);
-    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(48, 4), (uint)rootDigest.Length);
-    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(52, 4), descriptorFlags);
-    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(56, 4), (uint)blockSize);
-    BinaryPrimitives.WriteUInt64BigEndian(body.AsSpan(60, 8), treeOffset);
-    BinaryPrimitives.WriteUInt64BigEndian(body.AsSpan(68, 8), treeSize);
-    BinaryPrimitives.WriteUInt64BigEndian(body.AsSpan(76, 8), 0UL); // fec_offset
-    BinaryPrimitives.WriteUInt64BigEndian(body.AsSpan(84, 8), 0UL); // fec_size
-    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(92, 4), 0); // fec_roots
+    hashAlgorithmBytes.AsSpan(0, Math.Min(hashAlgorithmBytes.Length, 32)).CopyTo(body.AsSpan(56, 32));
+    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(88, 4), (uint)partitionBytes.Length);
+    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(92, 4), (uint)salt.Length);
+    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(96, 4), (uint)rootDigest.Length);
+    BinaryPrimitives.WriteUInt32BigEndian(body.AsSpan(100, 4), descriptorFlags);
+    // body[104..164) is reserved[60], left as zero.
 
-    var offset = 144;
+    var offset = 164;
     partitionBytes.CopyTo(body.AsSpan(offset));
     offset += partitionBytes.Length;
     salt.CopyTo(body.AsSpan(offset));
@@ -1347,18 +1572,17 @@ static byte[] BuildHashtreeDescriptorBlob(
     return descriptor;
 }
 
-static byte[] GenerateHashTree(byte[] image, ulong imageSize, int blockSize, string hashAlgorithm, ReadOnlySpan<byte> salt)
+static byte[] GenerateHashTree(byte[] image, int blockSize, string hashAlgorithm, ReadOnlySpan<byte> salt, out byte[] rootDigest)
 {
-    // Simplified hash tree generation
-    // In a real implementation, this would generate a proper Merkle tree
-    var digest = AvbCrypto.CalculateHash(hashAlgorithm, salt, image);
-    return digest;
+    // Real dm-verity Merkle tree generation (avbtool generate_hash_tree port).
+    return AvbHashtree.Build(image, blockSize, hashAlgorithm, salt, out rootDigest);
 }
 
 static int AppendHashtreeAndVBMetaInternal(
     string imagePath,
     byte[] imageData,
     byte[] hashtree,
+    byte[] fecData,
     ulong originalImageSize,
     byte[] vbmetaBlob,
     ulong partitionSize)
@@ -1382,7 +1606,7 @@ static int AppendHashtreeAndVBMetaInternal(
         Array.Resize(ref hashtree, padded);
     }
 
-    var vbmetaOffset = (ulong)(imageData.Length + hashtree.Length);
+    var vbmetaOffset = (ulong)(imageData.Length + hashtree.Length + fecData.Length);
     var vbmetaPaddedLength = (int)AlignUp((ulong)vbmetaBlob.Length, blockSize);
     var vbmetaPadded = new byte[vbmetaPaddedLength];
     vbmetaBlob.CopyTo(vbmetaPadded, 0);
@@ -1409,6 +1633,11 @@ static int AppendHashtreeAndVBMetaInternal(
     using var stream = new FileStream(imagePath, FileMode.Create, FileAccess.Write, FileShare.None);
     stream.Write(imageData, 0, imageData.Length);
     stream.Write(hashtree, 0, hashtree.Length);
+    if (fecData.Length > 0)
+    {
+        stream.Write(fecData, 0, fecData.Length);
+    }
+
     stream.Write(vbmetaPadded, 0, vbmetaPadded.Length);
 
     var dontCareLength = (long)(partitionSize - vbmetaEndOffset - blockSize);
@@ -1467,20 +1696,17 @@ static byte[] BuildVBMetaBlob(
     releaseBytes.AsSpan(0, releaseLength).CopyTo(header.AsSpan(128, releaseLength));
     header[128 + releaseLength] = 0;
 
-    // Generate signature if algorithm is not NONE
     if (algorithmType != (uint)AvbAlgorithmType.None && keyPath != null)
     {
         var algorithm = (AvbAlgorithmType)algorithmType;
         var dataToSign = header.Concat(auxBlock).ToArray();
         var signature = AvbCrypto.SignData(keyPath, algorithm, dataToSign, signingHelper, signingHelperWithFiles);
 
-        // Read public key from private key
         using var rsa = RSA.Create();
         rsa.ImportFromPem(File.ReadAllText(keyPath));
         var publicKey = rsa.ExportParameters(false);
         var encodedPublicKey = AvbCrypto.EncodeRSAPublicKey(publicKey);
 
-        // Build auth block
         var hash = AvbCrypto.CalculateHash(algorithm, dataToSign);
         authBlock = new byte[hash.Length + signature.Length + encodedPublicKey.Length];
         hash.CopyTo(authBlock, 0);
@@ -2062,6 +2288,12 @@ static void PrintHelp()
     Console.WriteLine("  extract_public_key_digest --key <pem> --output <digest.txt>");
     Console.WriteLine("  make_vbmeta_image --output <vbmeta.img> [--algorithm NONE] [--padding_size <n>]");
     Console.WriteLine("  add_hash_footer --image <image> --partition_size <bytes> --partition_name <name> [--hash_algorithm sha256|sha512]");
+    Console.WriteLine("  add_hashtree_footer --image <image> --partition_size <bytes> --partition_name <name> [--hash_algorithm sha1|sha256|sha512] [--block_size <n>] [--salt <hex>] [--algorithm NONE|sha256-rsa2048|...] [--key <pem>] [--do_not_generate_fec] [--fec_num_roots <n>]");
+    Console.WriteLine("  make_hashtree_image --image <image> --output <tree_file> [--hash_algorithm sha1|sha256|sha512] [--block_size <n>] [--salt <hex>]");
+    Console.WriteLine("  verify_hashtree --image <image> --hashtree <tree_file> [--hash_algorithm sha1|sha256|sha512] [--block_size <n>] [--salt <hex>] [--root_digest <hex>]");
+    Console.WriteLine("  calc_footer_size --partition_size <bytes> [--vbmeta_size <bytes>]");
+    Console.WriteLine("  fec encode --image <file> --output <ecc> [--roots <n>]");
+    Console.WriteLine("  fec calc-size --data_size <bytes> [--roots <n>]");
     Console.WriteLine("  vbmeta verify <image_path>");
     Console.WriteLine("  vbmeta info <image_path>");
     Console.WriteLine("  vbmeta digest <image_path> [--sha512]");
@@ -2324,4 +2556,11 @@ file sealed class TempDirectory : IDisposable
             // Best-effort cleanup.
         }
     }
+}
+
+file sealed class CredentialArchivePatterns
+{
+    public static readonly Regex PikRegex = new Regex("^pik_certificate.*\\.bin$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    public static readonly Regex PukCertRegex = new Regex("^puk_certificate.*\\.bin$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+    public static readonly Regex PukKeyRegex = new Regex("^puk.*\\.pem$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 }

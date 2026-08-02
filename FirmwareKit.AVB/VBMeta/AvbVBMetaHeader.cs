@@ -197,7 +197,7 @@ public record struct AvbVBMetaImageHeader
         get
         {
             var temp = _reserved;
-            var span = MemoryMarshal.AsBytes(AvbCompat.CreateReadOnlySpanReadOnly(ref temp, 1));
+            var span = MemoryMarshal.AsBytes(AvbCompat.CreateReadOnlySpan(ref temp, 1));
             foreach (var b in span)
             {
                 if (b != 0)
@@ -219,7 +219,7 @@ public record struct AvbVBMetaImageHeader
         get
         {
             var temp = _releaseString;
-            var span = MemoryMarshal.AsBytes(AvbCompat.CreateReadOnlySpanReadOnly(ref temp, 1));
+            var span = MemoryMarshal.AsBytes(AvbCompat.CreateReadOnlySpan(ref temp, 1));
             var length = span.IndexOf((byte)0);
             if (length == -1)
             {
@@ -239,7 +239,7 @@ public record struct AvbVBMetaImageHeader
         get
         {
             var temp = _releaseString;
-            var span = MemoryMarshal.AsBytes(AvbCompat.CreateReadOnlySpanReadOnly(ref temp, 1));
+            var span = MemoryMarshal.AsBytes(AvbCompat.CreateReadOnlySpan(ref temp, 1));
             return span[ReleaseStringSize - 1] == 0;
         }
     }

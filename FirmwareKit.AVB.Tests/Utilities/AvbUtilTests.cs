@@ -128,6 +128,13 @@ public class AvbUtilTests
     }
 
     [Fact]
+    public void Crc32_StandardCheckVector()
+    {
+        // Standard CRC-32 (IEEE 802.3) check value: CRC32("123456789") == 0xCBF43926.
+        Assert.Equal(0xCBF43926u, AvbCrc32.Compute("123456789"u8));
+    }
+
+    [Fact]
     public void Basename()
     {
         Assert.Equal("foobar.c", AvbUtil.Basename("foobar.c"));

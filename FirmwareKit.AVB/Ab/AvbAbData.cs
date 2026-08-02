@@ -1,4 +1,5 @@
 
+using Force.Crc32;
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 
@@ -263,23 +264,6 @@ public record struct AvbAbData
 /// </summary>
 public static class AvbCrc32
 {
-    private static byte ReverseByte(byte b)
-    {
-        uint v = b;
-        v = ((v & 0xF) << 4) | (v >> 4);
-        v = ((v & 0x33) << 2) | ((v & 0xCC) >> 2);
-        v = ((v & 0x55) << 1) | ((v & 0xAA) >> 1);
-        return (byte)v;
-    }
-
-    private static uint ReverseUInt32(uint v)
-    {
-        return ((uint)ReverseByte((byte)v) << 24) |
-               ((uint)ReverseByte((byte)(v >> 8)) << 16) |
-               ((uint)ReverseByte((byte)(v >> 16)) << 8) |
-               ReverseByte((byte)(v >> 24));
-    }
-
     /// <summary>
     /// Computes the CRC32 checksum for the specified data buffer.
     /// <para>计算指定数据缓冲区的CRC32校验和。</para>
@@ -288,24 +272,5 @@ public static class AvbCrc32
     /// <para>要计算校验和的数据。</para></param>
     /// <returns>The computed CRC32 value.
     /// <para>计算出的CRC32值。</para></returns>
-    public static uint Compute(ReadOnlySpan<byte> data)
-    {
-        var crc = 0xFFFFFFFFu;
-        foreach (var b in data)
-        {
-            crc ^= (uint)ReverseByte(b) << 24;
-            for (var i = 0; i < 8; i++)
-            {
-                if ((crc & 0x80000000u) != 0)
-                {
-                    crc = (crc << 1) ^ 0x04C11DB7u;
-                }
-                else
-                {
-                    crc <<= 1;
-                }
-            }
-        }
-        return ReverseUInt32(~crc);
-    }
+    public static uint Compute(ReadOnlySpan<byte> data) => Crc32Algorithm.Compute(data.ToArray());
 }
